@@ -93,6 +93,7 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
         self.previous_project_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.previous_project_combo.setMinimumContentsLength(10)
         self.previous_button.clicked.connect(self.on_previous_button_clicked)
+        self.set_font_size()
 
     def on_previous_button_clicked(self):
         """⚙️ On previous button clicked."""
@@ -225,9 +226,9 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
     def set_font_size(self):
         """⚙️ Set font size."""
         panel_width = self.label.rect().width()
-        title_size = int(linear_interpolation(panel_width, 16, 20, 400, 800))
-        content_size = int(linear_interpolation(panel_width, 11, 15, 400, 800))
-        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
+        title_size = int(linear_interpolation(panel_width, 14, 18, 400, 600))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
+        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
 
         title_font = QFont("Arial", title_size)
         title_font.setWeight(QFont.DemiBold)
