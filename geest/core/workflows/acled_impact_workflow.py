@@ -161,9 +161,7 @@ class AcledImpactWorkflow(WorkflowBase):
             os.makedirs(self.workflow_directory)
         shapefile_path = os.path.join(self.workflow_directory, f"{self.layer_id}_acled_points.gpkg")
         log_message(f"Writing points to {shapefile_path}")
-        error = QgsVectorFileWriter.writeAsVectorFormat(
-            point_layer, shapefile_path, "utf-8", self.target_crs, "GPKG"
-        )
+        error = QgsVectorFileWriter.writeAsVectorFormat(point_layer, shapefile_path, "utf-8", self.target_crs, "GPKG")
         if error[0] != 0:
             raise QgsProcessingException(f"Error saving point layer to disk: {error[1]}")
         log_message(

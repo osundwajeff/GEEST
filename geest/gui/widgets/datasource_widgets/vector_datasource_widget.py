@@ -267,7 +267,9 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
                         if existing_layer:
                             self.layer_combo.setLayer(existing_layer)
                         else:
-                            base_path = layer_source_path.split("|")[0] if "|" in layer_source_path else layer_source_path
+                            base_path = (
+                                layer_source_path.split("|")[0] if "|" in layer_source_path else layer_source_path
+                            )
                             if os.path.exists(base_path):
                                 layer_name = os.path.splitext(os.path.basename(base_path))[0]
                                 loaded_layer = QgsVectorLayer(layer_source_path, layer_name, "ogr")
