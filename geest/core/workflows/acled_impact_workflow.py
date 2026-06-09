@@ -155,14 +155,14 @@ class AcledImpactWorkflow(WorkflowBase):
                 features.append(feature)
             point_provider.addFeatures(features)  # type: ignore
             log_message(f"Loaded {len(features)} points from CSV")
-        # Save the layer to disk as a shapefile
+        # Save the layer to disk as a GeoPackage
         # Ensure the workflow directory exists
         if not os.path.exists(self.workflow_directory):
             os.makedirs(self.workflow_directory)
-        shapefile_path = os.path.join(self.workflow_directory, f"{self.layer_id}_acled_points.shp")
+        shapefile_path = os.path.join(self.workflow_directory, f"{self.layer_id}_acled_points.gpkg")
         log_message(f"Writing points to {shapefile_path}")
         error = QgsVectorFileWriter.writeAsVectorFormat(
-            point_layer, shapefile_path, "utf-8", self.target_crs, "ESRI Shapefile"
+            point_layer, shapefile_path, "utf-8", self.target_crs, "GPKG"
         )
         if error[0] != 0:
             raise QgsProcessingException(f"Error saving point layer to disk: {error[1]}")
@@ -247,14 +247,14 @@ class AcledImpactWorkflow(WorkflowBase):
             output_layer = empty_layer
 
         output_name = f"{self.layer_id}_buffered"
-        output_path = os.path.join(self.workflow_directory, f"{output_name}.shp")
+        output_path = os.path.join(self.workflow_directory, f"{output_name}.gpkg")
         log_message(f"Writing buffered layer to {output_path}")
         error = QgsVectorFileWriter.writeAsVectorFormat(
             output_layer,
             output_path,
             "UTF-8",
             layer.crs(),
-            "ESRI Shapefile",
+            "GPKG",
         )
         log_message(f"Buffer result: {error}")
         del output_layer  # Free memory
@@ -306,7 +306,7 @@ class AcledImpactWorkflow(WorkflowBase):
             log_message("Layer failed to load!")
             return
         # Step 2: Perform the dissolve operation to separate disjoint polygons
-        dissolve_output_path = os.path.join(self.workflow_directory, f"{self.layer_id}_dissolve.shp")
+        dissolve_output_path = os.path.join(self.workflow_directory, f"{self.layer_id}_dissolve.gpkg")
         dissolve = processing.run(  # type: ignore[index]
             "native:dissolve",
             {
@@ -324,7 +324,7 @@ class AcledImpactWorkflow(WorkflowBase):
             level=Qgis.Info,
         )
         # Step 3: Perform the union to get all overlapping areas
-        union_output_path = os.path.join(self.workflow_directory, f"{self.layer_id}_union.shp")
+        union_output_path = os.path.join(self.workflow_directory, f"{self.layer_id}_union.gpkg")
         union = processing.run(  # type: ignore[index]
             "qgis:union",
             {
@@ -371,14 +371,14 @@ class AcledImpactWorkflow(WorkflowBase):
         # Step 7: Add the filtered features to the result layer
         for unique_feature in unique_geometries.values():
             provider.addFeature(unique_feature)
-        full_output_filepath = os.path.join(self.workflow_directory, f"{self.layer_id}_final.shp")
+        full_output_filepath = os.path.join(self.workflow_directory, f"{self.layer_id}_final.gpkg")
         # Step 8: Save the result layer to the specified output shapefile
         error = QgsVectorFileWriter.writeAsVectorFormat(
             result_layer,
             full_output_filepath,
             "UTF-8",
             result_layer.crs(),
-            "ESRI Shapefile",
+            "GPKG",
         )
         if error[0] == 0:
             log_message(
