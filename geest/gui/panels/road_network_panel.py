@@ -19,8 +19,8 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
 )
-from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal, pyqtSlot
-from qgis.PyQt.QtGui import QFont, QPixmap
+from qgis.PyQt.QtCore import QSettings, Qt, QUrl, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
 from qgis.PyQt.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
 from geest.core import WorkflowQueueManager
@@ -193,6 +193,16 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         self.road_layer_combo.currentIndexChanged.connect(self.update_road_layer_status)
         self.load_road_layer_button.clicked.connect(self.load_road_layer)
         self.download_active_transport_button.clicked.connect(self.download_active_transport_button_clicked)
+        self.description.setTextFormat(Qt.RichText)
+        self.description.linkActivated.connect(self.open_link_in_browser)
+        self.description6.setTextFormat(Qt.RichText)
+        self.description6.setText(
+            "Download a unified active transport network (roads + cycleways combined). "
+            "Please note that the OpenStreetMap servers can be busy at times. If your download fails, "
+            "either wait a little bit, then try to download again. Alternatively, you can get the data "
+            "manually from <a href='https://www.geofabrik.de/'>https://www.geofabrik.de/</a>."
+        )
+        self.description6.linkActivated.connect(self.open_link_in_browser)
 
         self.next_button.clicked.connect(self.on_next_button_clicked)
         self.previous_button.clicked.connect(self.on_previous_button_clicked)
@@ -206,6 +216,10 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
 
         # Start with next button disabled until a valid road layer is selected
         self._update_next_button_state()
+
+    def open_link_in_browser(self, url: str):
+        """Open the given URL in the user's default web browser using QDesktopServices."""
+        QDesktopServices.openUrl(QUrl(url))
 
     def update_road_layer_status(self):
         """Update status icon, tooltip, and auto-reproject if CRS mismatch detected.
