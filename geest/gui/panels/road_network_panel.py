@@ -938,6 +938,9 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
             return
         # Load the layer in QGIS
         QgsProject.instance().addMapLayer(layer)
+        # Select the downloaded layer in the combo so the model persists the path.
+        self.road_layer_combo.setLayer(layer)
+        self.emit_road_layer_change()
         self.progress_bar.setVisible(False)
         self.child_progress_bar.setVisible(False)
         self.enable_widgets()

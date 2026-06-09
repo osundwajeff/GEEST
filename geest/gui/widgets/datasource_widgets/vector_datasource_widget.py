@@ -249,6 +249,32 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
                 if layer:
                     self.layer_combo.setLayer(layer)
 
+            # Fallback restore by source path for OSM transport widgets where layer IDs
+            # may not be stable across dialog rebuilds or sessions.
+            if self.attributes.get("use_osm_transport_polyline_per_cell", 0):
+                if self.layer_combo.currentLayer() is None:
+                    layer_source_path = self.attributes.get(f"{self.widget_key}_layer_source", "")
+                    if not layer_source_path:
+                        layer_source_path = self.attributes.get("road_network_layer_path", "")
+
+                    if layer_source_path:
+                        existing_layer = None
+                        for project_layer in QgsProject.instance().mapLayers().values():
+                            if hasattr(project_layer, "source") and project_layer.source() == layer_source_path:
+                                existing_layer = project_layer
+                                break
+
+                        if existing_layer:
+                            self.layer_combo.setLayer(existing_layer)
+                        else:
+                            base_path = layer_source_path.split("|")[0] if "|" in layer_source_path else layer_source_path
+                            if os.path.exists(base_path):
+                                layer_name = os.path.splitext(os.path.basename(base_path))[0]
+                                loaded_layer = QgsVectorLayer(layer_source_path, layer_name, "ogr")
+                                if loaded_layer.isValid():
+                                    QgsProject.instance().addMapLayer(loaded_layer)
+                                    self.layer_combo.setLayer(loaded_layer)
+
             self.shapefile_line_edit = QLineEdit()
             self.shapefile_line_edit.setVisible(False)  # Hide initially
 

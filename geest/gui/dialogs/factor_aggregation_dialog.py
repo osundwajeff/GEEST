@@ -377,6 +377,7 @@ class FactorAggregationDialog(CustomBaseDialog):
             analysis_item = self.tree_item.parentItem.parentItem if self.tree_item.parentItem else None
             if analysis_item:
                 attributes["analysis_scale"] = analysis_item.attribute("analysis_scale", "")
+                attributes["road_network_layer_path"] = analysis_item.attribute("road_network_layer_path", "")
             log_message(f"Populating table for GUID: {guid}")
             log_message(f"Attributes: {item.attributesAsMarkdown()}")
 
