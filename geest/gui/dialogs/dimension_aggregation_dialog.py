@@ -138,6 +138,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
             dimension_weighting = float(attributes.get("dimension_weighting", 0.0))
             default_dimension_weighting = attributes.get("default_dimension_weighting", 0)
             is_factor_enabled = item.is_enabled()
+            is_included_in_analysis = item.getStatus() != "Excluded from analysis" and dimension_weighting > 0
 
             name_item = QTableWidgetItem(factor_id)
             name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -154,7 +155,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
             self.weightings[guid] = weighting_item
 
             # Use checkboxes - pass the is_enabled state
-            checkbox_widget = self.create_checkbox_widget(row, dimension_weighting, is_factor_enabled)
+            checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis, is_factor_enabled)
             self.table.setCellWidget(row, 2, checkbox_widget)
 
             # Reset button
@@ -183,6 +184,9 @@ class DimensionAggregationDialog(CustomBaseDialog):
                 weighting_item.setEnabled(False)
                 reset_button.setEnabled(False)
                 guid_item.setForeground(QColor(Qt.GlobalColor.gray))
+            else:
+                initial_state = Qt.CheckState.Checked if self.is_checkbox_checked(row) else Qt.CheckState.Unchecked
+                self.toggle_row_widgets(row, initial_state)
 
         layout.addWidget(self.table)
 
@@ -275,12 +279,12 @@ class DimensionAggregationDialog(CustomBaseDialog):
         self.guid_column_visible = not self.guid_column_visible
         self.table.setColumnHidden(4, not self.guid_column_visible)
 
-    def create_checkbox_widget(self, row: int, dimension_weighting: float, is_enabled: bool = True) -> QWidget:
+    def create_checkbox_widget(self, row: int, is_checked: bool, is_enabled: bool = True) -> QWidget:
         """
         Create a QWidget containing a QCheckBox for a specific row and center it.
         """
         checkbox = QCheckBox()
-        if dimension_weighting > 0 and is_enabled:
+        if is_checked and is_enabled:
             checkbox.setChecked(True)
         else:
             checkbox.setChecked(False)
@@ -353,7 +357,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
         """
         log_message(f"Checking checkbox state for row: {row}")
         checkbox = self.get_checkbox_in_row(row)  # Assuming the checkbox is in column 2
-        return checkbox.isChecked()
+        return checkbox.isChecked() if checkbox else False
 
     def get_checkbox_in_row(self, row: int) -> QCheckBox:
         """
@@ -409,10 +413,33 @@ class DimensionAggregationDialog(CustomBaseDialog):
                 spin_box.setStyleSheet("color: red;")  # Set font color to red if invalid
 
         # Enable or disable the OK button based on validation result
-        self.button_box.button(QDialogButtonBox.Ok).setEnabled(valid_sum)
+        if hasattr(self, "button_box"):
+            ok_button = self.button_box.button(QDialogButtonBox.Ok)
+            if ok_button:
+                ok_button.setEnabled(valid_sum)
 
     def accept_changes(self):
         """Handle the OK button by applying changes and closing the dialog."""
+        self.save_use_state_to_model()
         self.saveWeightingsToModel()  # Assign weightings when changes are accepted
         self.save_geometry()
         self.accept()
+
+    def save_use_state_to_model(self) -> None:
+        """Persist the Use checkbox state to factor dimension_weighting values."""
+        for row, factor_guid in enumerate(self.guids):
+            factor_item = self.tree_item.getItemByGuid(factor_guid)
+            if factor_item is None or not factor_item.is_enabled():
+                continue
+
+            checkbox_checked = self.is_checkbox_checked(row)
+            spin_box = self.weightings.get(factor_guid)
+            if checkbox_checked:
+                if spin_box and float(spin_box.value() or 0.0) == 0.0:
+                    default_weighting = float(factor_item.attribute("default_dimension_weighting", 1.0) or 1.0)
+                    spin_box.setValue(default_weighting)
+                    factor_item.setAttribute("dimension_weighting", default_weighting)
+            else:
+                if spin_box:
+                    spin_box.setValue(0.0)
+                factor_item.setAttribute("dimension_weighting", 0.0)

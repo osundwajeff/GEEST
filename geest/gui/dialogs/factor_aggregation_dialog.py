@@ -87,7 +87,9 @@ class FactorAggregationDialog(CustomBaseDialog):
         # and set it to the first available usable mode
         for guid in self.guids:
             item = self.tree_item.getItemByGuid(guid)
-            item.ensureValidAnalysisMode()
+            # Keep explicit "Do Not Use" selections; only auto-fix empty modes.
+            if item and not item.attribute("analysis_mode", ""):
+                item.ensureValidAnalysisMode()
 
         self.weightings = {}  # Temporary weightings
         self.data_sources = {}  # Temporary data sources
@@ -303,21 +305,18 @@ class FactorAggregationDialog(CustomBaseDialog):
         log_message("data_changed signal received, refreshing configuration")
         self.configuration_widget.refresh_radio_buttons(attributes)
 
-    def create_checkbox_widget(self, row: int, weighting_value: float) -> QWidget:
+    def create_checkbox_widget(self, row: int, is_checked: bool) -> QWidget:
         """⚙️ Create checkbox widget.
 
         Args:
             row: Row.
-            weighting_value: Weighting value.
+            is_checked: Initial checkbox state.
 
         Returns:
             The result of the operation.
         """
         checkbox = QCheckBox()
-        if weighting_value > 0:
-            checkbox.setChecked(True)
-        else:
-            checkbox.setChecked(False)
+        checkbox.setChecked(is_checked)
         checkbox.stateChanged.connect(lambda state, r=row: self.toggle_row_widgets(r, state))
 
         container = QWidget()
@@ -348,8 +347,6 @@ class FactorAggregationDialog(CustomBaseDialog):
             if widget:
                 if isinstance(widget, QDoubleSpinBox) and not is_enabled:
                     widget.setValue(0)
-                if isinstance(widget, QDoubleSpinBox) and is_enabled:
-                    widget.setValue(1.0)
                 widget.setEnabled(is_enabled)
         self.validate_weightings()
 
@@ -421,6 +418,11 @@ class FactorAggregationDialog(CustomBaseDialog):
 
             if self.weighting_column_visible:
                 weighting_value = float(attributes.get("factor_weighting", 0.0))
+                is_included_in_analysis = (
+                    item.getStatus() != "Excluded from analysis"
+                    and weighting_value > 0
+                    and attributes.get("analysis_mode", "") != "Do Not Use"
+                )
                 weighting_item = QDoubleSpinBox()
                 weighting_item.setRange(0.0, 1.0)
                 weighting_item.setDecimals(4)
@@ -429,10 +431,20 @@ class FactorAggregationDialog(CustomBaseDialog):
                 weighting_item.valueChanged.connect(self.validate_weightings)
                 self.table.setCellWidget(row, self.col_weight, weighting_item)
                 self.weightings[guid] = weighting_item
-                checkbox_widget = self.create_checkbox_widget(row, weighting_value)
+                checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis)
             else:
-                checkbox_widget = self.create_checkbox_widget(row, 1)
+                weighting_value = float(attributes.get("factor_weighting", 0.0))
+                is_included_in_analysis = (
+                    item.getStatus() != "Excluded from analysis"
+                    and weighting_value > 0
+                    and attributes.get("analysis_mode", "") != "Do Not Use"
+                )
+                checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis)
             self.table.setCellWidget(row, self.col_use, checkbox_widget)
+
+            # Ensure row widgets are immediately in sync with initial checkbox state.
+            initial_state = Qt.CheckState.Checked if self.is_checkbox_checked(row) else Qt.CheckState.Unchecked
+            self.toggle_row_widgets(row, initial_state)
 
             guid_item = QTableWidgetItem(guid)
             guid_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -550,9 +562,33 @@ class FactorAggregationDialog(CustomBaseDialog):
 
     def accept_changes(self):
         """Handle the OK button by applying changes and closing the dialog."""
+        self.save_use_state_to_model()
         self.save_weightings_to_model()
         self.save_geometry()
         self.accept()
+
+    def save_use_state_to_model(self) -> None:
+        """Persist the Use checkbox state to indicator factor_weighting values."""
+        for row, indicator_guid in enumerate(self.guids):
+            checkbox_checked = self.is_checkbox_checked(row)
+            indicator_item = self.tree_item.getItemByGuid(indicator_guid)
+            if indicator_item is None:
+                continue
+
+            analysis_mode = indicator_item.attribute("analysis_mode", "")
+            if analysis_mode == "Do Not Use":
+                checkbox_checked = False
+
+            new_weighting = float(indicator_item.attribute("factor_weighting", 0.0) or 0.0)
+            if checkbox_checked:
+                if new_weighting == 0.0:
+                    default_weighting = float(indicator_item.attribute("default_factor_weighting", 1.0) or 1.0)
+                    new_weighting = default_weighting
+            else:
+                new_weighting = 0.0
+
+            indicator_item.setAttribute("factor_weighting", new_weighting)
+            indicator_item.setData(2, f"{new_weighting:.2f}")
 
     def validate_weightings(self):
         """Validate weightings to ensure they sum to 1 and are within range."""

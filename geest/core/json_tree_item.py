@@ -837,7 +837,7 @@ class JsonTreeItem:
                 log_message(f"Updating weighting for {indicator_guid} to {new_weighting}")
                 indicator_item.setData(2, f"{new_weighting:.2f}")  # noqa E231
                 # weighting references the level above (i.e. factor)
-                indicator_item.attributes()["factor_weighting"] = new_weighting
+                indicator_item.setAttribute("factor_weighting", new_weighting)
             else:
                 # Log if the indicator name is not found
                 log_message(
@@ -859,7 +859,7 @@ class JsonTreeItem:
             if factor_item:
                 factor_item.setData(2, f"{new_weighting:.2f}")  # noqa E231
                 # weighting references the level above (i.e. dimension)
-                factor_item.attributes()["dimension_weighting"] = new_weighting
+                factor_item.setAttribute("dimension_weighting", new_weighting)
 
             else:
                 # Log if the factor name is not found
@@ -882,7 +882,7 @@ class JsonTreeItem:
             if dimension_item:
                 dimension_item.setData(2, f"{new_weighting:.2f}")  # noqa E231
                 # weighting references the level above (i.e. analysis)
-                dimension_item.attributes()["analysis_weighting"] = new_weighting
+                dimension_item.setAttribute("analysis_weighting", new_weighting)
 
             else:
                 # Log if the factor name is not found

@@ -1872,6 +1872,17 @@ class TreePanel(QWidget):
 
         attributes = item.attributes()
 
+        if role == "indicator" and attributes.get("analysis_mode", "") == "Do Not Use":
+            attributes["factor_weighting"] = 0.0
+            attributes["result"] = "Excluded from analysis"
+            attributes["result_file"] = ""
+            log_message(
+                f"Skipping {item.attribute('id')} because it is set to 'Do Not Use'.",
+                tag="GeoE3",
+                level=Qgis.Info,
+            )
+            return
+
         # Validate road network layer if needed (skip for Regional scale - uses simple buffer)
         analysis_mode = attributes.get("analysis_mode", "")
         analysis_scale = self.model.get_analysis_item().attributes().get("analysis_scale", "national")

@@ -271,6 +271,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
             dimension_id = attributes.get("name")
             analysis_weighting = float(attributes.get("analysis_weighting", 0.0))
             default_analysis_weighting = attributes.get("default_analysis_weighting", 0)
+            is_included_in_analysis = item.getStatus() != "Excluded from analysis" and analysis_weighting > 0
 
             name_item = QTableWidgetItem(dimension_id)
             name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -287,7 +288,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
             self.weightings[guid] = weighting_item
 
             # Use checkboxes
-            checkbox_widget = self.create_checkbox_widget(row, analysis_weighting)
+            checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis)
             self.table.setCellWidget(row, 2, checkbox_widget)
 
             # Reset button
@@ -301,17 +302,9 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
             self.table.setItem(row, 4, guid_item)
             guid_item.setToolTip(str(item.attributes()))
 
-            # disable the table row if the checkbox is unchecked
-            # Have to do this last after all widgets are initialized
-            # First check if the dimension is required
-            # and disable the checkbox if it is
-            for col in range(4):
-                try:
-                    item = self.table.item(row, col)
-                    item.setEnabled(False)
-                    # item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                except AttributeError:
-                    pass
+            # Ensure row widgets are in sync with initial checkbox state.
+            initial_state = Qt.CheckState.Checked if self.is_checkbox_checked(row) else Qt.CheckState.Unchecked
+            self.toggle_row_widgets(row, initial_state)
         # Set the table widget height to be no taller than its content
         self.table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.table.resizeColumnsToContents()
@@ -441,21 +434,18 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         self.guid_column_visible = not self.guid_column_visible
         self.table.setColumnHidden(4, not self.guid_column_visible)
 
-    def create_checkbox_widget(self, row: int, analysis_weighting: float) -> QWidget:
+    def create_checkbox_widget(self, row: int, is_checked: bool) -> QWidget:
         """Create a QWidget containing a QCheckBox for a specific row and center it.
 
         Args:
             row: The row index for which to create the checkbox.
-            analysis_weighting: The weighting value to determine initial checked state.
+            is_checked: Initial checked state for the row.
 
         Returns:
             A QWidget containing a centered QCheckBox.
         """
         checkbox = QCheckBox()
-        if analysis_weighting > 0:
-            checkbox.setChecked(True)  # Initially checked
-        else:
-            checkbox.setChecked(False)
+        checkbox.setChecked(is_checked)
         checkbox.stateChanged.connect(lambda state, r=row: self.toggle_row_widgets(r, state))
         checkbox.setEnabled(True)  # Enable by default
         # Create a container widget with a centered layout
@@ -531,7 +521,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         """
         log_message(f"Checking checkbox state for row: {row}")
         checkbox = self.get_checkbox_in_row(row)  # Assuming the checkbox is in column 2
-        return checkbox.isChecked()
+        return checkbox.isChecked() if checkbox else False
 
     def get_checkbox_in_row(self, row: int) -> QCheckBox:
         """Retrieve the checkbox widget in the specified row.
@@ -590,10 +580,14 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
                 spin_box.setStyleSheet("color: red;")  # Set font color to red if invalid
 
         # Enable or disable the OK button based on validation result
-        self.button_box.button(QDialogButtonBox.Ok).setEnabled(valid_sum)
+        if hasattr(self, "button_box"):
+            ok_button = self.button_box.button(QDialogButtonBox.Ok)
+            if ok_button:
+                ok_button.setEnabled(valid_sum)
 
     def accept_changes(self):
         """Handle the OK button by applying changes and closing the dialog."""
+        self.save_use_state_to_model()
         self.saveWeightingsToModel()  # Assign weightings when changes are accepted
         self.save_combo_to_model(self.aggregation_combo, self.aggregation_lineedit, "aggregation")
         self.save_combo_to_model(self.population_combo, self.population_lineedit, "population")
@@ -614,6 +608,25 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # Save the dialog geometry
         self.save_geometry()
         self.accept()
+
+    def save_use_state_to_model(self) -> None:
+        """Persist the Use checkbox state to dimension analysis_weighting values."""
+        for row, dimension_guid in enumerate(self.guids):
+            dimension_item = self.tree_item.getItemByGuid(dimension_guid)
+            if dimension_item is None:
+                continue
+
+            checkbox_checked = self.is_checkbox_checked(row)
+            spin_box = self.weightings.get(dimension_guid)
+            if checkbox_checked:
+                if spin_box and float(spin_box.value() or 0.0) == 0.0:
+                    default_weighting = float(dimension_item.attribute("default_analysis_weighting", 1.0) or 1.0)
+                    spin_box.setValue(default_weighting)
+                    dimension_item.setAttribute("analysis_weighting", default_weighting)
+            else:
+                if spin_box:
+                    spin_box.setValue(0.0)
+                dimension_item.setAttribute("analysis_weighting", 0.0)
 
     def save_combo_to_model(self, combo: QgsMapLayerComboBox, lineedit: QLineEdit, prefix: str):
         """Save the state of a QgsMapLayerComboBox to the json tree item.
