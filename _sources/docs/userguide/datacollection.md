@@ -15,7 +15,7 @@ This page provides guidance on finding and collecting relevant data for the GEOE
   <!-- Contextual Section with Merged DIMENSION Cell -->
 
   <tr>
-    <td rowspan="3" style="border: 1px solid black; padding: 1px; text-align: center; ">📝CONTEXTUAL</td>
+    <td rowspan="4" style="border: 1px solid black; padding: 1px; text-align: center; ">📝CONTEXTUAL</td>
     <td style="border: 1px solid black; padding: 1px; text-align: left; ">🏢Workplace Discrimination</td>
     <td style="border: 1px solid black; padding: 1px; text-align: left; ">WBL 2024 Workplace Index Score</td>
 <td style="border: 1px solid black; padding: 1px; text-align: left;">
@@ -39,6 +39,14 @@ This page provides guidance on finding and collecting relevant data for the GEOE
  <td style="border: 1px solid black; padding: 1px; text-align: left;">
     <a href="https://wbl.worldbank.org/en/wbl" target="_blank">
         WBL 2024 index score for Entrepreneurship
+    </a>
+  </tr>
+  <tr>
+    <td style="border: 1px solid black; padding: 1px; text-align: left; ">🏢EPLEX</td>
+    <td style="border: 1px solid black; padding: 1px; text-align: left; ">The Employment Protection Legislation Index</td>
+ <td style="border: 1px solid black; padding: 1px; text-align: left;">
+    <a href="https://eplex.ilo.org/en#indicators-section" target="_blank">
+        EPLEX Score
     </a>
   </tr>
 
@@ -177,6 +185,7 @@ This page provides guidance on finding and collecting relevant data for the GEOE
     </a>
 </td>
 </tr>
+
   <tr>
     <td style="border: 1px solid black; padding: 1px; text-align: left; ">🛡️Safety</td>
     <td style="border: 1px solid black; padding: 1px; text-align: left; ">Street lights/Nighttime lights</td>
@@ -270,6 +279,12 @@ While the above table showcases data specific to Saint Lucia, similar data can b
 
 8. <strong>Mapillary</strong>: A collaborative platform that offers street-level imagery contributed by users worldwide. Mapillary data includes vector data on street crossings, sidewalks, and public lighting, making it useful for place-based and accessibility assessments.
 </p>
+
+## Data Attribution and Citation
+
+GeoE3 may use external datasets and services depending on the selected workflows and user-provided inputs. Typical sources include OpenStreetMap, OpenRouteService, GHSL (European Commission JRC), Ookla Open Data, Space2Stats, ACLED, and VIIRS Nighttime Lights.
+
+When sharing outputs, always verify and include the relevant provider attribution, citation text, and license/terms for the datasets actually used in your analysis.
 
 
 ### Instructions for Data Collection:
