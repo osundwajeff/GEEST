@@ -22,6 +22,7 @@ from qgis.core import (
     QgsProcessingException,
     QgsProcessingFeedback,
     QgsProject,
+    QgsRasterLayer,
     QgsRectangle,
     QgsVectorLayer,
 )
@@ -786,53 +787,69 @@ class WorkflowBase(QObject):
         Raises:
             QgsProcessingException: If raster layer is None or invalid.
         """
-        # Validate raster layer before processing
-        if self.raster_layer is None:
+        raster_source = self._resolve_raster_source_for_processing()
+
+        if self.cell_size_m <= 0:
             raise QgsProcessingException(
-                f"Raster layer is not set for workflow '{self.workflow_name}'. "
-                "Please configure the raster layer in the workflow settings."
+                f"Invalid cell size ({self.cell_size_m}) for workflow '{self.workflow_name}'. "
+                "Expected a positive value."
             )
 
-        # Check if raster layer is valid (either QgsRasterLayer or path string)
-        from qgis.core import QgsRasterLayer
-
-        if isinstance(self.raster_layer, QgsRasterLayer):
-            if not self.raster_layer.isValid():
-                raise QgsProcessingException(
-                    f"Raster layer '{self.raster_layer.source()}' is not valid for workflow '{self.workflow_name}'. "
-                    "Please check that the file exists and is a valid raster format."
-                )
-        elif isinstance(self.raster_layer, str):
-            if not os.path.exists(self.raster_layer):
-                raise QgsProcessingException(
-                    f"Raster file '{self.raster_layer}' does not exist for workflow '{self.workflow_name}'. "
-                    "Please check the file path in the workflow settings."
-                )
-
-        # Convert the bbox to QgsRectangle
-        bbox = bbox.boundingBox()
+        bbox_rect = bbox.boundingBox()
+        if bbox_rect.isEmpty() or bbox_rect.width() <= 0 or bbox_rect.height() <= 0:
+            raise QgsProcessingException(
+                f"Invalid area extent for workflow '{self.workflow_name}' at index {index}. "
+                "Cannot process empty raster subset extent."
+            )
 
         reprojected_raster_path = os.path.join(
             self.workflow_directory,
             f"{self.layer_id}_clipped_and_reprojected_{index}.tif",
         )
 
+        warped_raster_path = os.path.join(
+            self.workflow_directory,
+            f"{self.layer_id}_warp_tmp_{index}.tif",
+        )
+
+        target_extent = (
+            f"{bbox_rect.xMinimum()},{bbox_rect.xMaximum()},"
+            f"{bbox_rect.yMinimum()},{bbox_rect.yMaximum()} [{self.target_crs.authid()}]"
+        )
+
         params = {
-            "INPUT": self.raster_layer,
+            "INPUT": raster_source,
             "TARGET_CRS": self.target_crs,
             "RESAMPLING": 0,
             "TARGET_RESOLUTION": self.cell_size_m,
             "NODATA": -9999,
-            "OUTPUT": "TEMPORARY_OUTPUT",
-            "TARGET_EXTENT": f"{bbox.xMinimum()},{bbox.xMaximum()},{bbox.yMinimum()},{bbox.yMaximum()} [{self.target_crs.authid()}]",  # noqa E231
+            "OUTPUT": warped_raster_path,
+            "TARGET_EXTENT": target_extent,
         }
+        log_message(
+            (
+                f"Warping raster for {self.workflow_name} area {index}: "
+                f"input={raster_source}, extent={target_extent}, "
+                f"target_crs={self.target_crs.authid()}, resolution={self.cell_size_m}"
+            ),
+            tag="GeoE3",
+            level=Qgis.Info,
+        )
 
-        aoi = processing.run(
-            "gdal:warpreproject",
-            params,
-            context=self.context,
-            feedback=QgsProcessingFeedback(),
-        )["OUTPUT"]
+        try:
+            aoi = processing.run(
+                "gdal:warpreproject",
+                params,
+                context=self.context,
+                feedback=QgsProcessingFeedback(),
+            )["OUTPUT"]
+        except Exception as error:
+            log_message(
+                f"Failed warpreproject for {self.workflow_name} area {index}: {error}",
+                tag="GeoE3",
+                level=Qgis.Critical,
+            )
+            raise
 
         params = {
             "INPUT": aoi,
@@ -840,13 +857,55 @@ class WorkflowBase(QObject):
             "FILL_VALUE": 0,
             "OUTPUT": reprojected_raster_path,
         }
-        processing.run(
-            "native:fillnodata",
-            params,
-            context=self.context,
-            feedback=QgsProcessingFeedback(),
-        )
+        try:
+            processing.run(
+                "native:fillnodata",
+                params,
+                context=self.context,
+                feedback=QgsProcessingFeedback(),
+            )
+        except Exception as error:
+            log_message(
+                f"Failed fillnodata for {self.workflow_name} area {index}: {error}",
+                tag="GeoE3",
+                level=Qgis.Critical,
+            )
+            raise
         return reprojected_raster_path
+
+    def _resolve_raster_source_for_processing(self) -> str:
+        """Resolve raster input to a stable source path for processing calls."""
+        if self.raster_layer is None:
+            raise QgsProcessingException(
+                f"Raster layer is not set for workflow '{self.workflow_name}'. "
+                "Please configure the raster layer in the workflow settings."
+            )
+
+        raster_source = None
+        if isinstance(self.raster_layer, QgsRasterLayer):
+            if not self.raster_layer.isValid():
+                raise QgsProcessingException(
+                    f"Raster layer '{self.raster_layer.source()}' is not valid for workflow '{self.workflow_name}'. "
+                    "Please check that the file exists and is a valid raster format."
+                )
+            raster_source = self.raster_layer.source()
+        elif isinstance(self.raster_layer, str):
+            raster_source = self.raster_layer
+        else:
+            raise QgsProcessingException(
+                f"Unsupported raster layer type '{type(self.raster_layer).__name__}' for workflow "
+                f"'{self.workflow_name}'."
+            )
+
+        raster_source = str(raster_source or "").strip()
+        if not raster_source:
+            raise QgsProcessingException(f"Raster source is empty for workflow '{self.workflow_name}'.")
+        if not os.path.exists(raster_source):
+            raise QgsProcessingException(
+                f"Raster file '{raster_source}' does not exist for workflow '{self.workflow_name}'. "
+                "Please check the file path in the workflow settings."
+            )
+        return raster_source
 
     def _rasterize(
         self,
