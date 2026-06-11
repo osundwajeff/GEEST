@@ -3,6 +3,7 @@
 This module contains functionality for acled impact workflow.
 """
 import csv
+import datetime
 import os
 
 from qgis import processing
@@ -24,7 +25,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 
-from geest.core import JsonTreeItem
+from geest.core import JsonTreeItem, setting
 from geest.utilities import log_message
 
 from .mappings import MAPPING_REGISTRY
@@ -60,6 +61,7 @@ class AcledImpactWorkflow(WorkflowBase):
         acled_mapping = MAPPING_REGISTRY.get("acled_conflict", {})
         self.event_scores = acled_mapping.get("event_scores", {})
         self.buffer_distances = acled_mapping.get("buffer_distances", {})
+        self._deferred_cleanup_paths = set()
         self.csv_file = self.attributes.get("use_csv_to_point_layer_csv_file", "")
         if not self.csv_file:
             error = "No CSV file provided."
@@ -71,6 +73,71 @@ class AcledImpactWorkflow(WorkflowBase):
             self.attributes["error"] = error
             raise Exception(error)
         self.feedback.setProgress(1.0)
+
+    @staticmethod
+    def _gpkg_related_paths(output_path: str) -> list:
+        """Return output and known GeoPackage sidecar/journal file paths."""
+        return [output_path, f"{output_path}-wal", f"{output_path}-shm", f"{output_path}-journal"]
+
+    def _remove_existing_gpkg_output(self, output_path: str) -> bool:
+        """Remove an existing GeoPackage output and related sidecar files.
+
+        Args:
+            output_path: Target GeoPackage path.
+
+        Returns:
+            True if all existing files were removed or did not exist, False otherwise.
+        """
+        all_removed = True
+        for path in self._gpkg_related_paths(output_path):
+            if not os.path.exists(path):
+                continue
+            try:
+                os.remove(path)
+            except OSError as e:
+                all_removed = False
+                log_message(
+                    f"Failed to remove existing output {path}: {e}",
+                    tag="GeoE3",
+                    level=Qgis.Warning,
+                )
+        return all_removed
+
+    def _build_intermediate_output_path(self, prefix: str, index: int) -> str:
+        """Build a collision-safe output path for intermediate files.
+
+        The deterministic indexed name is preferred. If it cannot be removed due to a lock,
+        a timestamp-based fallback is used for this run.
+        """
+        deterministic_path = os.path.join(
+            self.workflow_directory,
+            f"{self.layer_id}_{prefix}_{index}.gpkg",
+        )
+        if self._remove_existing_gpkg_output(deterministic_path):
+            return deterministic_path
+
+        timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        fallback_path = os.path.join(
+            self.workflow_directory,
+            f"{self.layer_id}_{prefix}_{index}_{timestamp}.gpkg",
+        )
+        self._remove_existing_gpkg_output(fallback_path)
+        log_message(
+            f"Using fallback output path due to lock/collision: {fallback_path}",
+            tag="GeoE3",
+            level=Qgis.Warning,
+        )
+        return fallback_path
+
+    def _retry_deferred_cleanup(self) -> None:
+        """Retry cleanup for files that previously failed to delete."""
+        if not self._deferred_cleanup_paths:
+            return
+        remaining = set()
+        for output_path in self._deferred_cleanup_paths:
+            if not self._remove_existing_gpkg_output(output_path):
+                remaining.add(output_path)
+        self._deferred_cleanup_paths = remaining
 
     def _process_features_for_area(
         self,
@@ -99,7 +166,7 @@ class AcledImpactWorkflow(WorkflowBase):
         # scored_layer = self._assign_scores(buffered_layer)
         self.feedback.setProgress(40.0)
         # Step 3: Dissolve and remove overlapping areas, keeping areas with the lowest value
-        dissolved_layer = self._overlay_analysis(buffered_layer)
+        dissolved_layer = self._overlay_analysis(buffered_layer, index)
         self.feedback.setProgress(60.0)
         # Step 4: Rasterize the dissolved layer
         raster_output = self._rasterize(
@@ -258,7 +325,7 @@ class AcledImpactWorkflow(WorkflowBase):
         del output_layer  # Free memory
         return QgsVectorLayer(output_path, output_name, "ogr")
 
-    def _overlay_analysis(self, input_layer):
+    def _overlay_analysis(self, input_layer: QgsVectorLayer, index: int):
         """
         Perform an overlay analysis on a set of circular polygons, prioritizing areas with the lowest value in overlapping regions,
         and save the result as a shapefile.
@@ -303,8 +370,11 @@ class AcledImpactWorkflow(WorkflowBase):
         if not input_layer.isValid():
             log_message("Layer failed to load!")
             return
+
+        self._retry_deferred_cleanup()
+
         # Step 2: Perform the dissolve operation to separate disjoint polygons
-        dissolve_output_path = os.path.join(self.workflow_directory, f"{self.layer_id}_dissolve.gpkg")
+        dissolve_output_path = self._build_intermediate_output_path("dissolve", index)
         dissolve = processing.run(  # type: ignore[index]
             "native:dissolve",
             {
@@ -316,13 +386,14 @@ class AcledImpactWorkflow(WorkflowBase):
             context=self.context,
             feedback=QgsProcessingFeedback(),
         )["OUTPUT"]
+        dissolve_layer = QgsVectorLayer(dissolve, "dissolve_layer", "ogr")
         log_message(
-            f"Dissolved areas have {len(dissolve)} features",
+            f"Dissolved areas have {dissolve_layer.featureCount()} features",
             tag="GeoE3",
             level=Qgis.Info,
         )
         # Step 3: Perform the union to get all overlapping areas
-        union_output_path = os.path.join(self.workflow_directory, f"{self.layer_id}_union.gpkg")
+        union_output_path = self._build_intermediate_output_path("union", index)
         union = processing.run(  # type: ignore[index]
             "qgis:union",
             {
@@ -369,7 +440,14 @@ class AcledImpactWorkflow(WorkflowBase):
         # Step 7: Add the filtered features to the result layer
         for unique_feature in unique_geometries.values():
             provider.addFeature(unique_feature)
-        full_output_filepath = os.path.join(self.workflow_directory, f"{self.layer_id}_final.gpkg")
+        full_output_filepath = os.path.join(
+            self.workflow_directory,
+            f"{self.layer_id}_final_{index}.gpkg",
+        )
+        if not self._remove_existing_gpkg_output(full_output_filepath):
+            raise QgsProcessingException(
+                f"Could not remove existing final output (likely locked): {full_output_filepath}"
+            )
         # Step 8: Save the result layer to the specified output shapefile
         error = QgsVectorFileWriter.writeAsVectorFormat(
             result_layer,
@@ -384,6 +462,15 @@ class AcledImpactWorkflow(WorkflowBase):
                 tag="GeoE3",
                 level=Qgis.Info,
             )
+            if not int(setting(key="developer_mode", default=0)):
+                for temp_path in [dissolve_output_path, union_output_path]:
+                    if not self._remove_existing_gpkg_output(temp_path):
+                        self._deferred_cleanup_paths.add(temp_path)
+                        log_message(
+                            f"Deferring cleanup for locked intermediate: {temp_path}",
+                            tag="GeoE3",
+                            level=Qgis.Warning,
+                        )
         else:
             raise QgsProcessingException(f"Error saving dissolved layer to disk: {error[1]}")
         return QgsVectorLayer(full_output_filepath, f"{self.layer_id}_final", "ogr")
