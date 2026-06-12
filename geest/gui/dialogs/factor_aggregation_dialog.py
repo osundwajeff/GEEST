@@ -4,6 +4,7 @@
 This module contains functionality for factor aggregation dialog.
 """
 
+import copy
 from typing import Optional, Sequence
 
 from qgis.core import Qgis
@@ -93,6 +94,11 @@ class FactorAggregationDialog(CustomBaseDialog):
 
         self.weightings = {}  # Temporary weightings
         self.data_sources = {}  # Temporary data sources
+        self._initial_indicator_attributes = {
+            guid: copy.deepcopy(self.tree_item.getItemByGuid(guid).attributes())
+            for guid in self.guids
+            if self.tree_item.getItemByGuid(guid) is not None
+        }
 
         self.weighting_column_visible = len(self.guids) > 1
 
@@ -564,8 +570,44 @@ class FactorAggregationDialog(CustomBaseDialog):
         """Handle the OK button by applying changes and closing the dialog."""
         self.save_use_state_to_model()
         self.save_weightings_to_model()
+        self._clear_changed_indicator_results()
         self.save_geometry()
         self.accept()
+
+    @staticmethod
+    def _normalized_attributes_for_change_check(attributes: dict) -> dict:
+        """Return attributes with non-configuration keys removed for change checks."""
+        excluded_keys = {
+            "result",
+            "result_file",
+            "error",
+            "error_file",
+            "execution_start_time",
+            "execution_end_time",
+            "factor_weighting",
+            "default_factor_weighting",
+            "dimension_weighting",
+            "default_dimension_weighting",
+            "analysis_weighting",
+            "default_analysis_weighting",
+        }
+        return {key: value for key, value in attributes.items() if key not in excluded_keys}
+
+    def _clear_changed_indicator_results(self) -> None:
+        """Clear result state for indicators whose configuration changed in this dialog."""
+        for guid in self.guids:
+            indicator_item = self.tree_item.getItemByGuid(guid)
+            if indicator_item is None:
+                continue
+
+            previous_attributes = self._initial_indicator_attributes.get(guid, {})
+            current_attributes = indicator_item.attributes()
+
+            previous_normalized = self._normalized_attributes_for_change_check(previous_attributes)
+            current_normalized = self._normalized_attributes_for_change_check(current_attributes)
+
+            if previous_normalized != current_normalized:
+                indicator_item.clear(recursive=False)
 
     def save_use_state_to_model(self) -> None:
         """Persist the Use checkbox state to indicator factor_weighting values."""
@@ -576,16 +618,30 @@ class FactorAggregationDialog(CustomBaseDialog):
                 continue
 
             analysis_mode = indicator_item.attribute("analysis_mode", "")
+            old_weighting = float(indicator_item.attribute("factor_weighting", 0.0) or 0.0)
+            was_enabled = analysis_mode != "Do Not Use" and old_weighting > 0.0
+
+            # If user explicitly re-enables an indicator that was disabled via
+            # analysis_mode="Do Not Use", restore a valid mode first.
+            if checkbox_checked and analysis_mode == "Do Not Use":
+                indicator_item.ensureValidAnalysisMode()
+                analysis_mode = indicator_item.attribute("analysis_mode", "")
+
+            # No usable analysis mode could be restored; keep it disabled.
             if analysis_mode == "Do Not Use":
                 checkbox_checked = False
 
-            new_weighting = float(indicator_item.attribute("factor_weighting", 0.0) or 0.0)
+            new_weighting = old_weighting
             if checkbox_checked:
                 if new_weighting == 0.0:
                     default_weighting = float(indicator_item.attribute("default_factor_weighting", 1.0) or 1.0)
                     new_weighting = default_weighting
             else:
                 new_weighting = 0.0
+
+            will_be_enabled = analysis_mode != "Do Not Use" and new_weighting > 0.0
+            if was_enabled != will_be_enabled:
+                indicator_item.clear(recursive=False)
 
             indicator_item.setAttribute("factor_weighting", new_weighting)
             indicator_item.setData(2, f"{new_weighting:.2f}")
