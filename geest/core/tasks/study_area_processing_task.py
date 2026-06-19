@@ -910,6 +910,8 @@ class StudyAreaProcessingTask(QgsTask):
         self._ghsl_wait_condition = QWaitCondition()
         self._ghsl_response_received = False
         self._ghsl_continue_without = False  # Set by UI when user responds
+        self.termination_reason = ""
+        self.termination_detail = ""
         self.write_lock = QMutex()
         self.gpkg_lock = QMutex()
         self.grid_id_lock = QMutex()
@@ -1359,6 +1361,8 @@ class StudyAreaProcessingTask(QgsTask):
         Returns:
             True if processing completed successfully, False otherwise.
         """
+        self.termination_reason = ""
+        self.termination_detail = ""
         self._set_sqlite_write_safety_options()
         try:
             # 1) Create the bounding box as a single polygon feature
@@ -1403,10 +1407,19 @@ class StudyAreaProcessingTask(QgsTask):
 
                 if not response_received:
                     log_message("No user response received within timeout, aborting task", level="WARNING")
+                    self._set_termination_reason(
+                        reason="GHSL confirmation timed out.",
+                        detail="GHSL download failed and confirmation timed out. "
+                        "Check connectivity/settings and try again.",
+                    )
                     return False
 
                 if not continue_without:
                     log_message("User chose to abort task due to GHSL download failure")
+                    self._set_termination_reason(
+                        reason="GHSL download failed.",
+                        detail="GHSL data could not be downloaded and processing was stopped.",
+                    )
                     return False
 
                 log_message("User chose to continue without GHSL data")
@@ -1517,6 +1530,8 @@ class StudyAreaProcessingTask(QgsTask):
             self.create_raster_vrt()
 
         except Exception as e:
+            reason, detail = self._friendly_error_message(e)
+            self._set_termination_reason(reason=reason, detail=detail)
             log_message(f"Error in run(): {str(e)}")
             log_message(traceback.format_exc())
             with open(os.path.join(self.working_dir, "error.txt"), "w") as f:
@@ -1530,6 +1545,65 @@ class StudyAreaProcessingTask(QgsTask):
             self._cleanup_gdal_resources()
 
         return True
+
+    def _set_termination_reason(self, reason: str, detail: str = "") -> None:
+        """Store safe, user-facing termination text for the UI."""
+        safe_reason = (reason or "Could not prepare study area.").strip()
+        safe_detail = (detail or safe_reason).strip()
+        self.termination_reason = safe_reason
+        self.termination_detail = safe_detail
+
+    def _friendly_error_message(self, error: Exception) -> tuple[str, str]:
+        """Convert technical exceptions to user-friendly summary text."""
+        error_message = str(error).strip()
+        lowered = error_message.lower()
+
+        if isinstance(error, PermissionError):
+            return (
+                "Cannot write output files.",
+                "Cannot write output files. Check folder permissions and try again.",
+            )
+
+        if "failed to export layer to shapefile" in lowered:
+            return (
+                "Failed to export boundary layer.",
+                "Failed to export the boundary layer. Check input layer validity and output path.",
+            )
+
+        if "could not open" in lowered and "ogr" in lowered:
+            return (
+                "Could not open study area layer.",
+                "Could not read the study area layer. Check data source availability and try again.",
+            )
+
+        if "crs" in lowered and "epsg" in lowered:
+            return (
+                "Invalid CRS selection.",
+                "The selected CRS is not EPSG-based. Choose a valid EPSG CRS and try again.",
+            )
+
+        if "database" in lowered and ("locked" in lowered or "readonly" in lowered):
+            return (
+                "Study area database is busy.",
+                "The study area database is locked or read-only. Close other apps and retry.",
+            )
+
+        if "ghsl" in lowered:
+            return (
+                "GHSL data processing failed.",
+                "GHSL data could not be processed. Check connectivity/settings and try again.",
+            )
+
+        if error_message:
+            return (
+                "Could not prepare study area.",
+                f"Could not prepare study area: {error_message}",
+            )
+
+        return (
+            "Could not prepare study area.",
+            "An unexpected error occurred while preparing the study area.",
+        )
 
     def _writer_is_active(self) -> bool:
         """Return True when unified writer thread is currently running."""

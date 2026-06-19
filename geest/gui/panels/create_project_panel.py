@@ -73,6 +73,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         self.queue_manager = WorkflowQueueManager(pool_size=1)
 
         self.working_dir = ""
+        self.study_area_task = None
         self.settings = QSettings()  # Initialize QSettings to store and retrieve settings
         self._last_map_refresh_ts = 0.0
         self._incomplete_setup_warned = False
@@ -470,6 +471,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
                 analysis_scale=analysis_scale,
                 h3_resolution=h3_resolution,
             )
+            self.study_area_task = processor
             # Hook up the QTask feedback signal to the progress bar
             # Measure overall task progress from the task object itself
             processor.progressChanged.connect(self.progress_updated)
@@ -664,20 +666,32 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
 
     def on_task_terminated(self):
         """Slot to be called when the study area processing task is terminated (aborted or failed)."""
+        task = self.study_area_task
+        reason = "Task was interrupted or canceled."
+        if task is not None and getattr(task, "termination_detail", ""):
+            reason = task.termination_detail
+
         log_message(
-            "Study area processing was terminated.",
+            f"Study area processing was terminated. Reason: {reason}",
             tag="GeoE3",
             level=Qgis.Warning,
         )
+
+        self.enable_widgets()
+
         self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Aborted — fix settings, then click > to retry")
+        self.progress_bar.setFormat("Aborted - Could not prepare study area.")
+        self.processing_info_label.setText(f"Main error: {reason} Check settings, then click > to retry.")
+        self.processing_info_label.setVisible(True)
+        self.processing_info_label.setEnabled(True)
         self.child_progress_bar.setVisible(False)
-        self.enable_widgets()
+        self.study_area_task = None
 
     def on_task_completed(self):
         """Slot to be called when the task completes successfully."""
+        self.study_area_task = None
         log_message(
             "*** Study area processing completed successfully. ***",
             tag="GeoE3",
