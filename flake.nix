@@ -28,6 +28,7 @@
         ps.jsonschema
         ps.debugpy
         ps.psutil
+        ps.h3
       ];
       qgisWithExtras = geospatial.packages.${system}.qgis.override {
         inherit extraPythonPackages;
@@ -141,6 +142,7 @@
             ps.docformatter
             ps.flake8
             ps.gdal
+            ps.h3
             ps.httpx
             ps.jsonschema
             ps.matplotlib

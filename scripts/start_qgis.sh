@@ -26,11 +26,9 @@ rm -f "$GEOE3_LOG"
 # This is the new way, using Ivan Mincis nix spatial project and a flake
 # see flake.nix for implementation details
 # Both GEOE3_* and GEEST_* env vars are set for backward compatibility
-# QT_QPA_PLATFORM flag forces it to run under x11 protocol
 GEOE3_LOG=${GEOE3_LOG} \
   GEOE3_DEBUG=${DEVELOPER_MODE} \
   GEOE3_EXPERIMENTAL=${GEOE3_EXPERIMENTAL} \
   GEOE3_TEST_DIR=${GEOE3_TEST_DIR} \
   RUNNING_ON_LOCAL=1 \
-  QT_QPA_PLATFORM=xcb \
   nix run .#default -- --profile GEOE3
