@@ -76,6 +76,7 @@ class PolylinePerCellWorkflow(WorkflowBase):
                 return False
         self.features_layer = QgsVectorLayer(layer_path, "polyline_per_cell Layer", "ogr")
         self.workflow_name = "polyline_per_cell"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

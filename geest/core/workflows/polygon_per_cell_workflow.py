@@ -94,6 +94,7 @@ class PolygonPerCellWorkflow(WorkflowBase):
                 return False
         self.features_layer = QgsVectorLayer(layer_path, "polygon_per_cell_layer", "ogr")
         self.workflow_name = "polygon_per_cell"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

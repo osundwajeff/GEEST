@@ -613,7 +613,18 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             self.layer_combo.setLayer(layer)
 
             if self.osm_download_button:
-                self.osm_controls.set_downloaded()
+                if layer.featureCount() == 0:
+                    self.osm_controls.set_no_data()
+                else:
+                    self.osm_controls.set_downloaded()
+
+            if layer.featureCount() == 0:
+                QMessageBox.information(
+                    self,
+                    "OSM Download Completed",
+                    "The OSM download completed, but no features were found in this area. "
+                    "GeoE3 will use neutral values for this indicator so analysis can continue.",
+                )
         else:
             error_msg = f"Downloaded file exists but could not be loaded as a valid layer: {gpkg_path}"
             log_message(f"Failed to load layer: {error_msg}", tag="GeoE3", level=Qgis.Critical)

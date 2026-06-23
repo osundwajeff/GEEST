@@ -98,6 +98,7 @@ class SinglePointBufferWorkflow(WorkflowBase):
         buffer_distance = self.attributes.get("single_buffer_point_layer_distance", default_buffer_distance)
         self.buffer_distance = int(buffer_distance) if buffer_distance else int(default_buffer_distance)
         self.workflow_name = "single_point_buffer"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

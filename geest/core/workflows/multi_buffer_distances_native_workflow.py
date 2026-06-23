@@ -164,6 +164,7 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
                 raise Exception("Invalid network layer found.")
         log_message("Multi Buffer Distances Native Workflow initialized")
         self.workflow_name = "multi_buffer_point"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

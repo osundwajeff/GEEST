@@ -125,6 +125,16 @@ class DownloadTaskControls:
             stop_spinner=True,
         )
 
+    def set_no_data(self) -> None:
+        """Set successful download state when source has no features."""
+        self._set_state(
+            text="No Data",
+            enabled=True,
+            style="background-color: #fff3cd; padding: 5px 10px;",
+            tooltip="Download completed, but no features were found for the selected area.",
+            stop_spinner=True,
+        )
+
     def stop_spinner(self) -> None:
         """Stop spinner animation and hide indicator."""
         self.spinner_movie.stop()

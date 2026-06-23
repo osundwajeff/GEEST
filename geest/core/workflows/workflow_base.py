@@ -13,6 +13,7 @@ from typing import Optional
 
 from qgis import processing
 from qgis.core import (
+    QgsField,
     Qgis,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
@@ -26,7 +27,7 @@ from qgis.core import (
     QgsRectangle,
     QgsVectorLayer,
 )
-from qgis.PyQt.QtCore import QObject, QSettings, pyqtSignal
+from qgis.PyQt.QtCore import QObject, QSettings, QVariant, pyqtSignal
 
 from geest.core import JsonTreeItem, setting
 from geest.core.algorithms import (
@@ -126,6 +127,7 @@ class WorkflowBase(QObject):
 
         self.result_file_key = "result_file"
         self.result_key = "result"
+        self.supports_empty_features_fallback = False
 
         # Will be populated by the workflow - use atomic update for thread safety
         self.attributes = self.item.attributes()
@@ -596,6 +598,7 @@ class WorkflowBase(QObject):
                             current_area,
                             output_prefix=f"{self.layer_id}_area_features_{index}",
                         )
+                        raster_output = None
                         # Some workflows do not take in vector data (a features layer)
                         # but are not raster based. e.g. index_score_workflow
                         # Logic below is a check for that
@@ -603,22 +606,43 @@ class WorkflowBase(QObject):
                             not isinstance(self.features_layer, bool)  # noqa W503
                             and area_features.featureCount() == 0  # noqa W503
                         ):
-                            log_message(
-                                "No area features ... skipping",
-                                tag="GeoE3",
-                                level=Qgis.Warning,
-                            )
-                            continue
+                            if self.supports_empty_features_fallback:
+                                log_message(
+                                    f"No area features for {self.workflow_name} in area {area_name}; using neutral fallback output.",
+                                    tag="GeoE3",
+                                    level=Qgis.Warning,
+                                )
+                                raster_output = self._build_empty_features_neutral_raster(
+                                    current_area=current_area,
+                                    current_bbox=current_bbox,
+                                    index=index,
+                                    area_name=area_name,
+                                )
+                                if not raster_output:
+                                    log_message(
+                                        f"Neutral fallback failed for {self.workflow_name} in area {area_name}; skipping area.",
+                                        tag="GeoE3",
+                                        level=Qgis.Warning,
+                                    )
+                                    continue
+                            else:
+                                log_message(
+                                    "No area features ... skipping",
+                                    tag="GeoE3",
+                                    level=Qgis.Warning,
+                                )
+                                continue
 
                         # Step 2: Process the area features - work happens in concrete class
-                        raster_output = self._process_features_for_area(
-                            current_area=current_area,
-                            clip_area=clip_area,
-                            current_bbox=current_bbox,
-                            area_features=area_features,
-                            index=index,
-                            area_name=area_name,
-                        )
+                        if raster_output is None:
+                            raster_output = self._process_features_for_area(
+                                current_area=current_area,
+                                clip_area=clip_area,
+                                current_bbox=current_bbox,
+                                area_features=area_features,
+                                index=index,
+                                area_name=area_name,
+                            )
                     elif not self.aggregation:  # assumes we are processing a raster input
                         area_raster = self._subset_raster_layer(bbox=current_bbox, index=index)
                         raster_output = self._process_raster_for_area(
@@ -736,6 +760,33 @@ class WorkflowBase(QObject):
                 log_layer_count()  # For performance tuning, write the number of open layers to a log file
                 self.workflowError.emit(f"Failed to process {self.workflow_name}: {e}")
                 return False
+
+    def _build_empty_features_neutral_raster(
+        self,
+        current_area: QgsGeometry,
+        current_bbox: QgsGeometry,
+        index: int,
+        area_name: Optional[str] = None,
+    ) -> Optional[str]:
+        """Create a neutral raster output when an area has no input features."""
+        _ = area_name
+        try:
+            neutral_layer = geometry_to_memory_layer(current_area, self.target_crs, f"{self.layer_id}_neutral_{index}")
+            neutral_layer.startEditing()
+            neutral_layer.dataProvider().addAttributes([QgsField("value", QVariant.Int)])
+            neutral_layer.updateFields()
+            for feature in neutral_layer.getFeatures():
+                feature.setAttribute("value", 0)
+                neutral_layer.updateFeature(feature)
+            neutral_layer.commitChanges()
+            return self._rasterize(neutral_layer, current_bbox, index, value_field="value", default_value=0)
+        except Exception as error:
+            log_message(
+                f"Failed to build neutral fallback raster for {self.workflow_name}: {error}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+            return None
 
     def _create_workflow_directory(self) -> str:
         """

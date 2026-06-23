@@ -50,6 +50,7 @@ class OsmTransportPolylinePerCellWorkflow(WorkflowBase):
             item, cell_size_m, analysis_scale, feedback, context, working_directory
         )  # ⭐️ Item is a reference - whatever you change in this item will directly update the tree
         self.workflow_name = "use_osm_transport_polyline_per_cell"
+        self.supports_empty_features_fallback = True
         # Use unified active transport - combines both highway and cycleway with best score logic
         self.osm_processing_type = OSMDownloadType.ACTIVE_TRANSPORT
         layer_path = self.attributes.get("osm_transport_polyline_per_cell_shapefile", None)
