@@ -83,7 +83,7 @@ def select_grid_cells_and_count_features(
             if feature_geom.isEmpty():
                 continue
 
-            if feature_geom.type() == QgsWkbTypes.PointGeometry:
+            if feature_geom.type() == QgsWkbTypes.GeometryType.PointGeometry:
                 # For point geometries, use bounding box to find intersecting grid cells
                 intersecting_ids = grid_index.intersects(feature_geom.boundingBox())
             else:
@@ -439,7 +439,7 @@ def select_grid_cells_and_assign_transport_score(
         # Instead of one huge bbox for the whole line, query smaller bboxes per segment
         # This dramatically reduces false positives for long diagonal roads
         abstract_geom = feature_geom.constGet()
-        if feature_geom.type() == QgsWkbTypes.LineGeometry and abstract_geom is not None:
+        if feature_geom.type() == QgsWkbTypes.GeometryType.LineGeometry and abstract_geom is not None:
             # Get vertices and query each segment's bbox
             vertices = list(abstract_geom.vertices())
             candidate_set = set()

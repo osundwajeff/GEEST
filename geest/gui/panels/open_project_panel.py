@@ -7,7 +7,7 @@ This module contains functionality for open project panel.
 import os
 
 from qgis.core import Qgis  # noqa F401
-from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, Qt, QSettings, pyqtSignal
 from qgis.PyQt.QtGui import QFont, QFontMetrics
 from qgis.PyQt.QtWidgets import QComboBox, QFileDialog, QWidget
 
@@ -90,7 +90,9 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
         self.previous_project_combo.currentIndexChanged.connect(self.update_tooltip)
         self.previous_project_combo.currentIndexChanged.connect(self.on_previous_project_changed)
         self.previous_project_combo.installEventFilter(self)  # handle resizes for eliding the combo text
-        self.previous_project_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.previous_project_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         self.previous_project_combo.setMinimumContentsLength(10)
         self.previous_button.clicked.connect(self.on_previous_button_clicked)
         self.set_font_size()
@@ -113,7 +115,7 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
         """
         metrics = QFontMetrics(self.previous_project_combo.font())
         available_width = self.previous_project_combo.width() - 20  # Add padding
-        elided_text = metrics.elidedText(path, Qt.ElideLeft, available_width)
+        elided_text = metrics.elidedText(path, Qt.TextElideMode.ElideLeft, available_width)
         return elided_text
 
     def eventFilter(self, obj, event):
@@ -126,7 +128,7 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
         Returns:
             The result of the operation.
         """
-        if obj == self.previous_project_combo and event.type() == event.Resize:
+        if obj == self.previous_project_combo and event.type() == QEvent.Type.Resize:
             # Reapply elision for all items in the combo box on resize
             for index in range(self.previous_project_combo.count()):
                 full_path = self.previous_project_combo.itemData(index)
@@ -231,7 +233,7 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
         control_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
 
         title_font = QFont("Arial", title_size)
-        title_font.setWeight(QFont.DemiBold)
+        title_font.setWeight(QFont.Weight.DemiBold)
         self.label_2.setFont(title_font)
         self.label.setFont(QFont("Arial", content_size))
         self.previous_project_combo.setFont(QFont("Arial", control_size))

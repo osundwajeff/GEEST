@@ -25,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QStyle,
     QToolButton,
 )
 
@@ -54,26 +55,26 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             filter = None
             tooltip = ""
             if self.attributes.get("use_single_buffer_point", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer that will be buffered with a single buffer."
             elif self.attributes.get("use_point_per_cell", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer whose points will be counted per cell."
             elif self.attributes.get("use_multi_buffer_point", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer whose points will buffered with multiple buffers."
             elif self.attributes.get("use_street_lights", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
             elif self.attributes.get("use_osm_transport_polyline_per_cell", 0):
                 # Putting this before use polyline layer means that
                 # it will be used with priority over a simple line layer
-                filter = QgsMapLayerProxyModel.LineLayer
+                filter = QgsMapLayerProxyModel.Filter.LineLayer
                 tooltip = "An OSM line layer whose features will be classified and the most beneficial category assigned to the cell."
             elif self.attributes.get("use_polyline_per_cell", 0):
-                filter = QgsMapLayerProxyModel.LineLayer
+                filter = QgsMapLayerProxyModel.Filter.LineLayer
                 tooltip = "A line layer whose features will be counted per cell."
             else:
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
                 tooltip = "A polygon layer whose features will be counted per cell."
 
             # Determine if OSM download widget should be added based on indicator type
@@ -285,7 +286,7 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             clear_icon = QIcon(resources_path("resources", "icons", "clear.svg"))
             self.clear_button.setIcon(clear_icon)
             self.clear_button.setToolTip("Clear")
-            self.clear_button.setCursor(Qt.ArrowCursor)
+            self.clear_button.setCursor(Qt.CursorShape.ArrowCursor)
             self.clear_button.setStyleSheet("border: 0px; padding: 0px;")
             self.clear_button.clicked.connect(self.clear_shapefile)
             self.clear_button.setVisible(False)
@@ -376,9 +377,7 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         """Reposition the clear button when the line edit is resized."""
         log_message("Resizing clear button")
         # Position the clear button inside the line edit
-        frame_width = self.shapefile_line_edit.style().pixelMetric(
-            self.shapefile_line_edit.style().PM_DefaultFrameWidth
-        )
+        frame_width = self.shapefile_line_edit.style().pixelMetric(QStyle.PixelMetric.PM_DefaultFrameWidth)
 
         self.shapefile_line_edit.setStyleSheet(
             f"QLineEdit {{ padding-right: {self.clear_button.sizeHint().width() + frame_width}px; }}"  # noqa E702,E202,E201

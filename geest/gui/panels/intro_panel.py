@@ -69,6 +69,6 @@ class IntroPanel(FORM_CLASS, QWidget):
         content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
 
         title_font = QFont("Arial", title_size)
-        title_font.setWeight(QFont.DemiBold)
+        title_font.setWeight(QFont.Weight.DemiBold)
         self.label_2.setFont(title_font)
         self.intro_label.setFont(QFont("Arial", content_size))

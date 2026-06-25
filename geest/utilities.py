@@ -499,10 +499,10 @@ def is_qgis_dark_theme_active() -> bool:
     if not app:
         return False
 
-    # Check the application palette for dark colors
+    # Check the application palette for dark colors (Qt5/Qt6 compatible)
     palette = app.palette()
-    window_color = palette.color(palette.Window)
-    text_color = palette.color(palette.WindowText)
+    window_color = palette.window().color()
+    text_color = palette.windowText().color()
     if window_color.lightness() < text_color.lightness():
         return True
 

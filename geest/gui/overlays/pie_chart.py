@@ -70,7 +70,7 @@ class PieChartItem(QgsMapCanvasItem):
         if not pie_data:
             return
         diameter = 100
-        image = QImage(diameter, diameter, QImage.Format_ARGB32)
+        image = QImage(diameter, diameter, QImage.Format.Format_ARGB32)
         image.fill(Qt.GlobalColor.white)
 
         chart_x = painter.device().width() - (diameter + 20)

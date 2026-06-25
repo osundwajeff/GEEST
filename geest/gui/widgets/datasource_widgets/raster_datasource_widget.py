@@ -11,7 +11,7 @@ from qgis.core import Qgis, QgsMapLayerProxyModel, QgsProject
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt.QtCore import QSettings, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QToolButton
+from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QStyle, QToolButton
 
 from geest.utilities import log_message, resources_path
 
@@ -59,7 +59,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         """
         # Raster Layer ComboBox (Filtered to raster layers)
         self.raster_layer_combo = QgsMapLayerComboBox()
-        self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
+        self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
         self.raster_layer_combo.setAllowEmptyLayer(True)
         # Insert placeholder text at the top (only visually, not as a selectable item)
         self.raster_layer_combo.setCurrentIndex(-1)  # Ensure no selection initially
@@ -89,7 +89,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         clear_icon = QIcon(resources_path("resources", "icons", "clear.svg"))
         self.clear_button.setIcon(clear_icon)
         self.clear_button.setToolTip("Clear")
-        self.clear_button.setCursor(Qt.ArrowCursor)
+        self.clear_button.setCursor(Qt.CursorShape.ArrowCursor)
         self.clear_button.setStyleSheet("border: 0px; padding: 0px;")
         self.clear_button.clicked.connect(self.clear_raster)
         self.clear_button.setVisible(False)
@@ -128,7 +128,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         """Reposition the clear button when the line edit is resized."""
         log_message("Resizing clear button")
         # Position the clear button inside the line edit
-        frame_width = self.raster_line_edit.style().pixelMetric(self.raster_line_edit.style().PM_DefaultFrameWidth)
+        frame_width = self.raster_line_edit.style().pixelMetric(QStyle.PixelMetric.PM_DefaultFrameWidth)
         self.raster_line_edit.setStyleSheet(
             f"QLineEdit {{ padding-right: {self.clear_button.sizeHint().width() + frame_width}px; }}"  # noqa E702,E202,E201
         )

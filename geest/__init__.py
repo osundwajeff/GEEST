@@ -112,7 +112,7 @@ class CanvasOverlayFilter(QObject):
         Returns:
             False to let the event propagate normally.
         """
-        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             QSettings().setValue("geoe3/overlay_label", "")
             QSettings().setValue("geoe3/pie_data", "")
         return False
@@ -236,9 +236,9 @@ class GeoE3Plugin:
         # Dont remove this, needed for geometry restore....
         self.dock_widget.setObjectName("GeoE3DockWidget")  # Set a unique object name
         self.dock_widget.setFeatures(
-            QDockWidget.DockWidgetClosable  # noqa: W503
-            | QDockWidget.DockWidgetMovable  # noqa: W503
-            | QDockWidget.DockWidgetFloatable  # noqa: W503
+            QDockWidget.DockWidgetFeature.DockWidgetClosable  # noqa: W503
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable  # noqa: W503
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable  # noqa: W503
         )
         QgsProject.instance().readProject.connect(self.dock_widget.qgis_project_changed)
 
@@ -248,11 +248,7 @@ class GeoE3Plugin:
         self.dock_widget.qgis_project_changed()
 
         # Restore geometry and dock area before adding to the main window
-        self.restore_geometry()
-
-        # Check the dock area; default to right dock if not set
-        settings = QSettings("ESMAP", "GeoE3")
-        dock_area = settings.value("GeoE3Dock/area", Qt.RightDockWidgetArea, type=int)
+        dock_area = self.restore_geometry()
 
         # Add the dock widget to the restored or default dock area
         self.iface.addDockWidget(dock_area, self.dock_widget)
@@ -261,14 +257,13 @@ class GeoE3Plugin:
         existing_docks = [
             dw
             for dw in self.iface.mainWindow().findChildren(QDockWidget)
-            if self.iface.mainWindow().dockWidgetArea(dw) == dock_area
+            if self.iface.mainWindow().dockWidgetArea(dw) == dock_area and dw is not self.dock_widget
         ]
 
         # Tabify the new dock before the first found dock widget, if available
         if existing_docks:
             self.iface.mainWindow().tabifyDockWidget(existing_docks[0], self.dock_widget)
         else:
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
             legend_tab = self.iface.mainWindow().findChild(QApplication, "Legend")
             if legend_tab:
                 self.iface.mainWindow().tabifyDockWidget(legend_tab, self.dock_widget)
@@ -494,7 +489,7 @@ for module_name in list(sys.modules.keys()):
                 return self.combo.currentText()
 
         dialog = TestPickerDialog(all_test_options, self.iface.mainWindow())
-        if not dialog.exec_():
+        if not dialog.exec():
             return  # Cancelled
 
         selected_test = dialog.selected_test()
@@ -563,11 +558,30 @@ for module_name in list(sys.modules.keys()):
             dock_area = self.iface.mainWindow().dockWidgetArea(self.dock_widget)
             settings.setValue("GeoE3Dock/area", dock_area)
 
-    def restore_geometry(self) -> None:
+    def _coerce_dock_area(self, dock_area_value) -> Qt.DockWidgetArea:
+        """Normalize dock area values loaded from QSettings."""
+        default_area = Qt.DockWidgetArea.RightDockWidgetArea
+        if dock_area_value is None:
+            return default_area
+        if isinstance(dock_area_value, Qt.DockWidgetArea):
+            return dock_area_value
+        try:
+            if isinstance(dock_area_value, str):
+                dock_area_value = dock_area_value.strip()
+                if not dock_area_value:
+                    return default_area
+            return Qt.DockWidgetArea(int(dock_area_value))
+        except (TypeError, ValueError):
+            return default_area
+
+    def restore_geometry(self) -> Qt.DockWidgetArea:
         """
         Restores the geometry and dock area of GeoE3Dock from QSettings.
         """
         settings = QSettings("ESMAP", "GeoE3")
+        dock_area = settings.value("GeoE3Dock/area", None)
+        if dock_area is None:
+            dock_area = settings.value("GeestDock/area", None)
 
         if self.dock_widget:
             # Restore geometry (with fallback to old GeestDock key for backward compatibility)
@@ -575,10 +589,7 @@ for module_name in list(sys.modules.keys()):
             if geometry:
                 self.dock_widget.restoreGeometry(geometry)
 
-            # Restore dock area (with fallback to old GeestDock key for backward compatibility)
-            dock_area = settings.value("GeoE3Dock/area", type=int) or settings.value("GeestDock/area", type=int)
-            if dock_area is not None:
-                self.iface.addDockWidget(dock_area, self.dock_widget)
+        return self._coerce_dock_area(dock_area)
 
     def setup_profiler_actions(self):
         """Set up cProfiler actions for developer mode."""
@@ -642,11 +653,11 @@ for module_name in list(sys.modules.keys()):
 
         # Ask user for file location
         file_dialog = QFileDialog()
-        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         file_dialog.setDefaultSuffix("prof")
         file_dialog.setNameFilter("Profile Data (*.prof);;Stats Text (*.txt);;All Files (*.*)")
 
-        if file_dialog.exec_():
+        if file_dialog.exec():
             selected_file = file_dialog.selectedFiles()[0]
             file_format = file_dialog.selectedNameFilter()
 

@@ -16,7 +16,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 try:
-    from PyQt5.QtWebEngineWidgets import QWebEngineView
+    from qgis.PyQt.QtWebEngineWidgets import QWebEngineView
 
     web_engine_available = True
 except ImportError:

@@ -81,7 +81,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
         # Scrollable body
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll_widget = QWidget()
         layout = QVBoxLayout(scroll_widget)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -115,14 +115,14 @@ class DimensionAggregationDialog(CustomBaseDialog):
         self.table.setRowCount(len(self.guids))
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["Factor", "Weight 0-1", "Use", "", "Guid"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         # Adjust column widths
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Factor column expands
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)  # Weight 0-1 column fixed
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)  # Use column fixed
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)  # Reset column fixed
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)  # Guid column fixed
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Factor column expands
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)  # Weight 0-1 column fixed
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # Use column fixed
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # Reset column fixed
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)  # Guid column fixed
 
         # Set fixed widths for the last three columns
         self.table.setColumnWidth(1, 100)  # Weight 0-1 column width
@@ -213,18 +213,18 @@ class DimensionAggregationDialog(CustomBaseDialog):
         layout.addLayout(help_layout)
 
         # Button box — outside the scroll area so it remains always visible
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         auto_calculate_button = QPushButton("Balance Weights")
-        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ActionRole)
+        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ButtonRole.ActionRole)
         self.button_box.accepted.connect(self.accept_changes)
         self.button_box.rejected.connect(self.reject)
         auto_calculate_button.clicked.connect(self.auto_calculate_weightings)
 
         toggle_guid_button = QPushButton("Show GUIDs")
-        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ActionRole)
+        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ButtonRole.ActionRole)
         verbose_mode = setting(key="verbose_mode", default=0)
         if verbose_mode:
-            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ActionRole)
+            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ButtonRole.ActionRole)
         toggle_guid_button.clicked.connect(self.toggle_guid_column)
         self.guid_column_visible = False  # Track GUID column visibility
         self.table.setColumnHidden(4, not self.guid_column_visible)  # Hide GUID column by default
@@ -250,7 +250,8 @@ class DimensionAggregationDialog(CustomBaseDialog):
         if geometry:
             try:
                 self.restoreGeometry(geometry)
-                screen = QApplication.desktop().screenGeometry()
+                screen_obj = QApplication.primaryScreen()
+                screen = screen_obj.availableGeometry() if screen_obj else self.geometry()
                 if self.width() > int(screen.width() * 0.85) or self.height() > int(screen.height() * 0.85):
                     settings.remove("DimensionAggregationDialog/geometry_v2")
                 else:
@@ -258,7 +259,8 @@ class DimensionAggregationDialog(CustomBaseDialog):
             except Exception:  # nosec B110
                 pass
         # Sensible default: cap at 900px wide, 80% screen height
-        screen = QApplication.desktop().screenGeometry()
+        screen_obj = QApplication.primaryScreen()
+        screen = screen_obj.availableGeometry() if screen_obj else self.geometry()
         width = min(900, int(screen.width() * 0.65))
         height = min(int(screen.height() * 0.80), 750)
         self.resize(width, height)
@@ -414,7 +416,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
 
         # Enable or disable the OK button based on validation result
         if hasattr(self, "button_box"):
-            ok_button = self.button_box.button(QDialogButtonBox.Ok)
+            ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
             if ok_button:
                 ok_button.setEnabled(valid_sum)
 

@@ -33,7 +33,9 @@ class CustomBaseDialog(QDialog):
         """
         with QPainter(self) as painter:
             # Scale the background image to match the dialog height
-            scaled_background = self.background_image.scaledToHeight(self.height(), Qt.SmoothTransformation)
+            scaled_background = self.background_image.scaledToHeight(
+                self.height(), Qt.TransformationMode.SmoothTransformation
+            )
 
             # Draw the image anchored to the right
             painter.drawPixmap(self.width() - scaled_background.width(), 0, scaled_background)
