@@ -942,6 +942,21 @@ def count_features_per_grid_cell(
 
         ds = None
         log_message(f"Updated {updated_count} grid cells with feature counts")
+
+        # Set score 0 for all cells with no intersecting features.
+        # "No features nearby" is a meaningful result (no access) and should
+        # render as score 0 (not enabling), not as transparent nodata.
+        ds = _open_gpkg_for_write(gpkg_path)
+        if ds:
+            sql = (
+                f"UPDATE study_area_grid "  # nosec B608
+                f'SET "{sanitized_column}" = 0 '
+                f'WHERE "{sanitized_column}" IS NULL'
+            )
+            _execute_sql_with_retry(ds, sql)
+            ds = None
+            log_message(f"Set score 0 for cells with no features in column {sanitized_column}")
+
         return updated_count
 
     except Exception as e:
@@ -1619,6 +1634,21 @@ def write_buffer_values_to_grid(
 
         ds = None
         log_message(f"Updated {updated_count} grid cells with buffer scores")
+
+        # Set score 0 for all cells outside every buffer (no access).
+        # "No buffer coverage" is a meaningful result and should render as
+        # score 0 (not enabling), not as transparent nodata.
+        ds = _open_gpkg_for_write(gpkg_path)
+        if ds:
+            sql = (
+                f"UPDATE study_area_grid "  # nosec B608
+                f'SET "{sanitized_column}" = 0 '
+                f'WHERE "{sanitized_column}" IS NULL'
+            )
+            _execute_sql_with_retry(ds, sql)
+            ds = None
+            log_message(f"Set score 0 for cells outside all buffers in column {sanitized_column}")
+
         return updated_count
 
     except Exception as e:

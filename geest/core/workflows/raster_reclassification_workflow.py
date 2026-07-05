@@ -182,7 +182,7 @@ class RasterReclassificationWorkflow(WorkflowBase):
             ]
         elif self.layer_id == "cyclone":
             self.reclassification_rules = [
-                0,
+                -1,
                 0,
                 5.00,
                 0,
@@ -203,7 +203,7 @@ class RasterReclassificationWorkflow(WorkflowBase):
             ]
         elif self.layer_id == "drought":
             self.reclassification_rules = [
-                0,
+                -1,
                 0,
                 5.00,
                 0,
@@ -343,6 +343,28 @@ class RasterReclassificationWorkflow(WorkflowBase):
 
         if updated_count < 0:
             raise RuntimeError("Failed to write S2S environmental hazards values to study_area_grid.")
+
+        # S2S NULL means no hazard recorded for that hex cell — absence of hazard
+        # is highly enabling (score 5). Set NULL → 0 so the reclassification rule
+        # [-1, 0, 5.00] correctly maps those cells to score 5.
+        from geest.core.grid_column_utils import _open_gpkg_for_write, _execute_sql_with_retry, _sanitize_column_name
+
+        sanitized = _sanitize_column_name(self.layer_id)
+        ds = _open_gpkg_for_write(self.gpkg_path)
+        if ds:
+            sql = (
+                f"UPDATE study_area_grid "  # nosec B608
+                f'SET "{sanitized}" = 0 '
+                f"WHERE area_name = '{area_name}' AND \"{sanitized}\" IS NULL"
+            )
+            _execute_sql_with_retry(ds, sql)
+            ds = None
+            log_message(
+                f"Set score 0 for S2S NULL hazard cells in area {area_name} "
+                f"(NULL = no hazard = will reclassify to score 5)",
+                tag="GeoE3",
+                level=Qgis.Info,
+            )
 
         mapped_count = reclassify_grid_column_with_table(
             gpkg_path=self.gpkg_path,

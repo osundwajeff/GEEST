@@ -452,7 +452,6 @@ class WorkflowJob(QgsTask):
         """
         return self._feedback
 
-    @cacheable(maxsize=8)  # Simple method can be cached with our custom decorator
     def finished(self, success: bool) -> None:
         """
         Override the finished method to emit a custom signal when the task is finished.

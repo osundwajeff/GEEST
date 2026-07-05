@@ -59,21 +59,9 @@ class OSMPrimarySchoolDownloader(OSMDataDownloaderBase):
   node["amenity"="school"]({{bbox}});
   way["amenity"="school"]({{bbox}});
   relation["amenity"="school"]({{bbox}});
-
-  node["building"="school"]({{bbox}});
-  way["building"="school"]({{bbox}});
-  relation["building"="school"]({{bbox}});
-
-  node["office"="educational_institution"]({{bbox}});
-  way["office"="educational_institution"]({{bbox}});
-  relation["office"="educational_institution"]({{bbox}});
-
-  node["education"="school"]({{bbox}});
-  way["education"="school"]({{bbox}});
-  relation["education"="school"]({{bbox}});
 );
 (._;>;);
-out geom;"""
+out body;"""
 
         self.set_osm_query(osm_query)
         self.submit_query()

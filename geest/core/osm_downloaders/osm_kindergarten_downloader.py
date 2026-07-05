@@ -82,7 +82,7 @@ class OSMKindergartenDownloader(OSMDataDownloaderBase):
   relation["building"="kindergarten"]({{bbox}});
 );
 (._;>;);
-out geom;"""
+out body;"""
 
         self.set_osm_query(osm_query)
         self.submit_query()

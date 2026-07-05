@@ -121,9 +121,7 @@ relation["junction"="roundabout"]({{bbox}});
 relation["junction"="circular"]({{bbox}});
 );
 (._;>;);
-out geom;"""
-        # outbody;""" ### Dont move the quotes to the next line !!!!
-        # if you do the query_prepare will think the format is not in oql format
+out body;"""
 
         self.set_osm_query(osm_query)
         self.submit_query()

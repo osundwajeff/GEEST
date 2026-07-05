@@ -109,7 +109,7 @@ class OSMPublicTransportDownloader(OSMDataDownloaderBase):
   node["public_transport"="stop_position"]({{bbox}});
 );
 (._;>;);
-out geom;"""
+out body;"""
 
         self.set_osm_query(osm_query)
         self.submit_query()

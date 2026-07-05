@@ -100,7 +100,7 @@ class OSMFinancialDownloader(OSMDataDownloaderBase):
   way["amenity"="mobile_money_agent"]({{bbox}});
 );
 (._;>;);
-out geom;"""
+out body;"""
 
         self.set_osm_query(osm_query)
         self.submit_query()

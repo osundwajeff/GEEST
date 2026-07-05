@@ -88,8 +88,9 @@ class FactorAggregationDialog(CustomBaseDialog):
         # and set it to the first available usable mode
         for guid in self.guids:
             item = self.tree_item.getItemByGuid(guid)
-            # Keep explicit "Do Not Use" selections; only auto-fix empty modes.
-            if item and not item.attribute("analysis_mode", ""):
+            if item and (
+                not item.attribute("analysis_mode", "") or item.attribute("analysis_mode", "") == "Do Not Use"
+            ):
                 item.ensureValidAnalysisMode()
 
         self.weightings = {}  # Temporary weightings

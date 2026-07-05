@@ -27,6 +27,7 @@ from qgis.core import (
     Qgis,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
+    QgsCoordinateTransformContext,
     QgsFeature,
     QgsFeedback,
     QgsField,
@@ -82,7 +83,7 @@ class OSMDataDownloaderBase(ABC):
             ValueError: If extents or output_path is not set.
         """
         self.base_url = "https://overpass-api.de/api/interpreter?info=QgisQuickOSMPlugin"
-        self.network_manager = QgsNetworkAccessManager()
+        self.network_manager = QgsNetworkAccessManager.instance()
         self.osm_query = None  # The raw Overpass API query
         self.formatted_query = None  # The Overpass API query with bbox substituted
         self.output_type = None  # Possible values: 'point', 'line', 'polygon'
@@ -125,11 +126,9 @@ class OSMDataDownloaderBase(ABC):
                 if "busy" in line:
                     log_message("OSM xml file indicates server busy...")
                     return False
-                if "error" in line:
+                if "<remark>" in line and "error" in line.lower():
                     log_message("OSM xml file indicates an error...")
                     return False
-        # delete the existing xml file if it exists
-        os.remove(self.output_xml_path)
 
         return True  # No issues found
 
@@ -584,9 +583,16 @@ class OSMDataDownloaderBase(ABC):
 
         # Save to final GeoPackage (single write at the end)
         if clipped_layer is not None:
-            QgsVectorFileWriter.writeAsVectorFormat(
-                clipped_layer, self.output_path, "UTF-8", clipped_layer.crs(), "GPKG"
-            )
+            if clipped_layer.featureCount() == 0:
+                log_message(
+                    "Clip produced 0 features — possible CRS mismatch between study area and OSM data. "
+                    "Falling back to unclipped layer.",
+                    level=Qgis.Warning,
+                )
+                save_layer = layer
+            else:
+                save_layer = clipped_layer
+            QgsVectorFileWriter.writeAsVectorFormat(save_layer, self.output_path, "UTF-8", save_layer.crs(), "GPKG")
             log_message(f"GeoPackage written to: {self.output_path}")
         else:
             # Fallback: save original layer if clipping failed
@@ -629,14 +635,12 @@ class OSMDataDownloaderBase(ABC):
             )
             return input_layer  # Return input layer if provided
 
-        # Dissolve all study area polygons into one combined geometry
-        combined_geom = QgsGeometry()
-        for feat in study_area_layer.getFeatures():
-            geom = feat.geometry()
-            if combined_geom.isEmpty():
-                combined_geom = QgsGeometry(geom)
-            else:
-                combined_geom = combined_geom.combine(geom)
+        # Dissolve all study area polygons into one combined geometry.
+        # unaryUnion() uses GEOS cascaded union — robust for multipart,
+        # non-adjacent, and complex polygons; avoids silent failures from
+        # sequential combine() calls on large/invalid geometries.
+        geometries = [feat.geometry() for feat in study_area_layer.getFeatures()]
+        combined_geom = QgsGeometry.unaryUnion(geometries)
 
         if combined_geom.isEmpty() or not combined_geom.isGeosValid():
             combined_geom = combined_geom.makeValid()
@@ -647,10 +651,13 @@ class OSMDataDownloaderBase(ABC):
                 )
                 return input_layer  # Return input layer if provided
 
-        # Reproject the study area geometry to the CRS of the OSM data if they differ
+        # Reproject the study area geometry to the CRS of the OSM data if they differ.
+        # Use a default transform context rather than QgsProject.instance() because
+        # this method runs in a worker thread where QgsProject.instance() is not
+        # thread-safe and may return an invalid transform context.
         source_crs = study_area_layer.crs()
         if source_crs != data_crs:
-            transform = QgsCoordinateTransform(source_crs, data_crs, QgsProject.instance())
+            transform = QgsCoordinateTransform(source_crs, data_crs, QgsCoordinateTransformContext())
             combined_geom.transform(transform)
 
         # Build a temporary in-memory overlay layer for native:clip
