@@ -203,7 +203,21 @@ class AcledImpactWorkflow(WorkflowBase):
         point_provider.addAttributes(fields)  # type: ignore
         point_layer.updateFields()
         # Read the CSV and add reprojected points to the layer
-        with open(self.csv_file, newline="", encoding="utf-8") as csvfile:
+        try:
+            csv_file_handle = open(self.csv_file, newline="", encoding="utf-8")
+        except FileNotFoundError:
+            error = f"ACLED CSV file not found: {self.csv_file}"
+            self.attributes["error"] = error
+            raise Exception(error) from None
+        except PermissionError:
+            error = f"Permission denied reading ACLED CSV file: {self.csv_file}"
+            self.attributes["error"] = error
+            raise Exception(error) from None
+        except OSError as e:
+            error = f"Could not open ACLED CSV file '{self.csv_file}'. Check that the file exists and is not locked by another application."
+            self.attributes["error"] = error
+            raise Exception(error) from e
+        with csv_file_handle as csvfile:
             reader = csv.DictReader(csvfile)
             features = []
             for row in reader:
