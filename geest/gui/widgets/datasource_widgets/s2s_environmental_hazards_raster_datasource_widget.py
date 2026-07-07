@@ -3,13 +3,9 @@
 
 import os
 
-from qgis.core import QgsApplication, QgsVectorLayer
-from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
+from qgis.PyQt.QtWidgets import QFileDialog
 
-from geest.core import S2STaskGate
 from geest.core.constants import DEFAULT_S2S_ENV_HAZARD_FIELDS
-from geest.core.tasks import S2SDownloaderTask
 
 from .s2s_datasource_widget import S2SDataSourceWidget
 from .s2s_ntl_raster_datasource_widget import S2SNTLRasterDataSourceWidget
@@ -17,6 +13,53 @@ from .s2s_ntl_raster_datasource_widget import S2SNTLRasterDataSourceWidget
 
 class S2SEnvironmentalHazardsRasterDataSourceWidget(S2SNTLRasterDataSourceWidget):
     """Regional datasource widget that fetches hazard values from S2S."""
+
+    # ------------------------------------------------------------------
+    # Hook overrides — customise S2S behaviour for environmental hazards
+    # ------------------------------------------------------------------
+
+    def _get_s2s_filename(self) -> str:
+        """Return hazard-specific output filename stem."""
+        return f"s2s_environmental_hazards_{self._hazard_id()}"
+
+    def _get_gate_label(self) -> str:
+        """Return hazard-specific gate label."""
+        return f"widget:hazard:{self._hazard_id()}"
+
+    def _get_s2s_fields(self) -> list:
+        """Return the hazard field to fetch from S2S."""
+        return [self._hazard_field_from_attributes()]
+
+    def _get_s2s_field_name(self) -> str:
+        """Return a human-readable field name for UI messages."""
+        return "environmental hazards"
+
+    def _get_s2s_success_message(self) -> str:
+        """Return the status text shown on successful download."""
+        return "S2S environmental hazards downloaded"
+
+    def _get_missing_field_error(self) -> str:
+        """Return the error message when hazard field is not configured."""
+        return f"No S2S environmental hazards field is configured for {self._hazard_id()}."
+
+    def _validate_required_fields(self, fields: list) -> str:
+        """Validate that the hazard field is configured."""
+        if not fields or not fields[0]:
+            return self._get_missing_field_error()
+        return ""
+
+    def _resolve_default_s2s_output_path(self, working_directory: str) -> str:
+        """Return hazard-specific default S2S output path."""
+        if not working_directory:
+            return ""
+        hazard_id = self._hazard_id()
+        if not hazard_id:
+            return ""
+        return os.path.join(working_directory, "study_area", f"s2s_environmental_hazards_{hazard_id}.gpkg")
+
+    # ------------------------------------------------------------------
+    # UI setup
+    # ------------------------------------------------------------------
 
     def add_internal_widgets(self) -> None:
         """Build controls and configure hazard-specific S2S defaults."""
@@ -37,107 +80,20 @@ class S2SEnvironmentalHazardsRasterDataSourceWidget(S2SNTLRasterDataSourceWidget
             self.s2s_vector_field_combo.setEnabled(False)
             self.s2s_vector_field_combo.setVisible(False)
 
-    def fetch_from_s2s(self) -> None:
-        """Fetch S2S summary rows for environmental hazards grid scoring."""
-        settings = QSettings()
-        working_directory = settings.value("last_working_directory", "")
-        if not working_directory or not os.path.exists(working_directory):
-            QMessageBox.warning(
-                self,
-                "No Working Directory",
-                "No valid working directory found. Please create or open a project first.",
-            )
-            return
+    # ------------------------------------------------------------------
+    # Hazard-specific helpers
+    # ------------------------------------------------------------------
 
-        study_area_gpkg = os.path.join(working_directory, "study_area", "study_area.gpkg")
-        if not os.path.exists(study_area_gpkg):
-            QMessageBox.warning(
-                self,
-                "Study Area Required",
-                "Study area GeoPackage not found. Please create a project first.",
-            )
-            return
-
-        hazard_field = self._hazard_field_from_attributes()
-        if not hazard_field:
-            QMessageBox.warning(self, "S2S Field Required", "No S2S environmental hazards field is configured.")
-            return
-
-        aoi_layer = self._build_aoi_layer(study_area_gpkg)
-        if not aoi_layer:
-            QMessageBox.warning(
-                self,
-                "Invalid Study Area",
-                "Could not load study_area_bboxes from study_area.gpkg.",
-            )
-            return
-
-        aoi_feature = S2SDataSourceWidget._build_aoi_feature(aoi_layer)
-        if not aoi_feature:
-            QMessageBox.warning(self, "Invalid AOI", "Failed to build AOI feature from study area geometry.")
-            return
-
-        filename = f"s2s_environmental_hazards_{self.attributes.get('id', '').lower()}"
-        self.s2s_vector_output_path = os.path.join(working_directory, "study_area", f"{filename}.gpkg")
-        self.s2s_raster_output_path = ""
-        self.s2s_ntl_field = hazard_field
-
-        gate_label = f"widget:hazard:{self.attributes.get('id', '').lower()}"
-        token = S2STaskGate.acquire(gate_label)
-        if not token:
-            active = S2STaskGate.active_label() or "another panel"
-            QMessageBox.information(
-                self,
-                "S2S Busy",
-                f"Another S2S download is currently running ({active}). Please wait for it to finish.",
-            )
-            return
-        self._s2s_gate_token = token
-
-        self.s2s_controls.set_running()
-        self._set_status("Fetching S2S data...")
-        self._s2s_error_handled = False
-
-        self.s2s_task = S2SDownloaderTask(
-            aoi=aoi_feature,
-            fields=[hazard_field],
-            working_dir=working_directory,
-            filename=filename,
-            spatial_join_method="centroid",
-            geometry="point",
-            delete_existing=True,
-        )
-        self.s2s_task.progress_updated.connect(self._on_s2s_progress)
-        self.s2s_task.error_occurred.connect(self._on_s2s_error)
-        self.s2s_task.taskCompleted.connect(self._on_s2s_completed)
-        self.s2s_task.taskTerminated.connect(self._on_s2s_terminated)
-        QgsApplication.taskManager().addTask(self.s2s_task)
+    def _hazard_id(self) -> str:
+        """Return the lowercased indicator id for this hazard."""
+        return str(self.attributes.get("id", "")).lower()
 
     def _hazard_field_from_attributes(self) -> str:
         """Resolve S2S hazard field from indicator id or existing attribute."""
         existing = self.attributes.get("s2s_hazard_field", "")
         if existing:
             return str(existing)
-        indicator_id = str(self.attributes.get("id", "")).lower()
-        return DEFAULT_S2S_ENV_HAZARD_FIELDS.get(indicator_id, "")
-
-    def _resolve_default_s2s_output_path(self, working_directory: str) -> str:
-        """Return default hazard-specific S2S output path for this indicator."""
-        if not working_directory:
-            return ""
-        indicator_id = str(self.attributes.get("id", "")).lower()
-        if not indicator_id:
-            return ""
-        filename = f"s2s_environmental_hazards_{indicator_id}.gpkg"
-        return os.path.join(working_directory, "study_area", filename)
-
-    @staticmethod
-    def _build_aoi_layer(study_area_gpkg: str):
-        """Build and validate AOI layer from study area geopackage."""
-        aoi_layer = QgsVectorLayer(f"{study_area_gpkg}|layername=study_area_bboxes", "study_area_bboxes", "ogr")
-        if not aoi_layer.isValid() or aoi_layer.featureCount() == 0:
-            return None
-        return aoi_layer
+        return DEFAULT_S2S_ENV_HAZARD_FIELDS.get(self._hazard_id(), "")
 
     def select_raster(self) -> None:
         """Select raster or vector file for environmental hazards input."""
@@ -174,13 +130,13 @@ class S2SEnvironmentalHazardsRasterDataSourceWidget(S2SNTLRasterDataSourceWidget
 
     def _select_existing_hazard_output_layer(self) -> None:
         """Auto-select existing S2S hazard output when available."""
-        if not self.s2s_vector_output_path:
-            self.s2s_vector_output_path = self.attributes.get("s2s_output_path", "")
-        if not self.s2s_vector_output_path or not os.path.exists(self.s2s_vector_output_path):
+        if not self.s2s_output_path:
+            self.s2s_output_path = self.attributes.get("s2s_output_path", "")
+        if not self.s2s_output_path or not os.path.exists(self.s2s_output_path):
             return
 
-        layer_name = os.path.splitext(os.path.basename(self.s2s_vector_output_path))[0]
-        output_layer = S2SDataSourceWidget._load_or_reuse_vector_layer(self.s2s_vector_output_path, layer_name)
+        layer_name = os.path.splitext(os.path.basename(self.s2s_output_path))[0]
+        output_layer = S2SDataSourceWidget._load_or_reuse_vector_layer(self.s2s_output_path, layer_name)
         if output_layer is None:
             self._set_status("S2S output invalid")
             return

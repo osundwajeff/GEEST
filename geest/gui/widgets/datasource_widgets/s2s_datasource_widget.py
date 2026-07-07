@@ -65,8 +65,56 @@ class S2SDataSourceWidget(VectorDataSourceWidget):
         self.s2s_output_path = self.attributes.get("s2s_output_path", "")
         self._load_existing_s2s_output()
 
+    # ------------------------------------------------------------------
+    # Configuration hooks — subclasses override these to customise behaviour
+    # ------------------------------------------------------------------
+
+    def _get_s2s_filename(self) -> str:
+        """Return the output filename stem (without extension)."""
+        return f"s2s_{self.widget_key}"
+
+    def _get_gate_label(self) -> str:
+        """Return the S2S gate label used for serialising concurrent downloads."""
+        return f"widget:{self.widget_key}"
+
+    def _get_s2s_fields(self) -> List[str]:
+        """Return the list of S2S fields to fetch."""
+        return self._parse_fields(self.s2s_fields_line_edit.text())
+
+    def _get_s2s_output_path(self, working_directory: str) -> str:
+        """Return the full output path for the S2S GeoPackage."""
+        return os.path.join(working_directory, "study_area", f"{self._get_s2s_filename()}.gpkg")
+
+    def _resolve_default_s2s_output_path(self, working_directory: str) -> str:
+        """Return the default S2S output path for auto-load (may differ from _get_s2s_output_path)."""
+        return self._get_s2s_output_path(working_directory)
+
+    def _get_s2s_field_name(self) -> str:
+        """Return a human-readable field name for UI messages."""
+        return "S2S data"
+
+    def _get_s2s_success_message(self) -> str:
+        """Return the status text shown on successful download."""
+        return "S2S download complete"
+
+    def _get_empty_fields_error(self) -> str:
+        """Return the error message when no fields are entered."""
+        return "Please enter at least one S2S field (comma separated)."
+
+    def _get_missing_field_error(self) -> str:
+        """Return the error message when a required field is not configured."""
+        return f"No S2S {self._get_s2s_field_name()} field is configured."
+
+    def _validate_required_fields(self, fields: List[str]) -> str:
+        """Validate fields and return an error message, or empty string if valid."""
+        return ""
+
+    # ------------------------------------------------------------------
+    # Template methods
+    # ------------------------------------------------------------------
+
     def fetch_from_s2s(self) -> None:
-        """Start a background task to fetch S2S data for the study area."""
+        """Template method: start a background task to fetch S2S data for the study area."""
         settings = QSettings()
         working_directory = settings.value("last_working_directory", "")
         if not working_directory or not os.path.exists(working_directory):
@@ -86,13 +134,18 @@ class S2SDataSourceWidget(VectorDataSourceWidget):
             )
             return
 
-        fields = self._parse_fields(self.s2s_fields_line_edit.text())
+        fields = self._get_s2s_fields()
         if not fields:
             QMessageBox.warning(
                 self,
                 "S2S Fields Required",
-                "Please enter at least one S2S field (comma separated).",
+                self._get_empty_fields_error(),
             )
+            return
+
+        missing_field_error = self._validate_required_fields(fields)
+        if missing_field_error:
+            QMessageBox.warning(self, "S2S Field Required", missing_field_error)
             return
 
         aoi_layer = QgsVectorLayer(f"{study_area_gpkg}|layername=study_area_bboxes", "study_area_bboxes", "ogr")
@@ -113,9 +166,10 @@ class S2SDataSourceWidget(VectorDataSourceWidget):
             )
             return
 
-        self.s2s_output_path = os.path.join(working_directory, "study_area", f"s2s_{self.widget_key}.gpkg")
+        filename = self._get_s2s_filename()
+        self.s2s_output_path = self._get_s2s_output_path(working_directory)
 
-        gate_label = f"widget:{self.widget_key}"
+        gate_label = self._get_gate_label()
         token = S2STaskGate.acquire(gate_label)
         if not token:
             active = S2STaskGate.active_label() or "another panel"
@@ -135,7 +189,7 @@ class S2SDataSourceWidget(VectorDataSourceWidget):
             aoi=aoi_feature,
             fields=fields,
             working_dir=working_directory,
-            filename=f"s2s_{self.widget_key}",
+            filename=filename,
             spatial_join_method="centroid",
             geometry="point",
             delete_existing=True,
@@ -188,7 +242,7 @@ class S2SDataSourceWidget(VectorDataSourceWidget):
             return
 
         self._switch_to_layer_mode(output_layer)
-        self.s2s_status_label.setText("S2S download complete")
+        self.s2s_status_label.setText(self._get_s2s_success_message())
         self.s2s_controls.set_downloaded()
         self.update_attributes()
 

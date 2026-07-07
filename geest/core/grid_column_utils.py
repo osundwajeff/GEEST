@@ -700,6 +700,27 @@ def write_joined_values_to_grid(
                 log_message(f"Source layer not found in source GeoPackage: {source_layer}", level=Qgis.Warning)
                 return -1
 
+            # Validate source_value_field exists in source layer schema
+            schema_sql = f"PRAGMA table_info({source_layer_sql})"  # nosec B608
+            schema_result = _execute_sql_with_retry(ds, schema_sql, dialect="SQLite")
+            available_columns = []
+            if schema_result is not None:
+                feat = schema_result.GetNextFeature()
+                while feat:
+                    col_name = feat.GetField("name")
+                    if col_name:
+                        available_columns.append(col_name)
+                    feat = schema_result.GetNextFeature()
+                ds.ReleaseResultSet(schema_result)
+
+            if source_value_field not in available_columns:
+                log_message(
+                    f"Column '{source_value_field}' not found in source layer '{source_layer}'. "
+                    f"Available columns: {available_columns}",
+                    level=Qgis.Critical,
+                )
+                return -1
+
             # Clear existing values to preserve NULL semantics for unmatched keys.
             clear_sql = f"UPDATE study_area_grid SET {target_col_sql} = NULL"  # nosec B608
             if area_name:
