@@ -157,6 +157,13 @@ class S2SPanel(FORM_CLASS, QWidget):
             log_message("S2S prefetch skipped: study_area_bboxes unavailable.", tag="GeoE3", level=Qgis.Warning)
             return False
 
+        # On Windows, force a fresh read of GeoPackage data right after study area creation
+        try:
+            aoi_layer.dataProvider().reloadData()
+            aoi_layer.updateExtents()
+        except Exception:
+            pass
+
         aoi_feature = self._build_aoi_feature(aoi_layer)
         if not aoi_feature:
             log_message("S2S prefetch skipped: failed to build AOI feature.", tag="GeoE3", level=Qgis.Warning)

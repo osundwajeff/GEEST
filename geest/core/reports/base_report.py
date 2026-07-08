@@ -266,6 +266,13 @@ class BaseReport:
         # Get the current extent of all the layers
         layers_extent = QgsRectangle()
         for layer in layers:
+            # On Windows, GeoPackage layers can have stale extents right after
+            # study area creation. Force the provider to reload data and recompute.
+            try:
+                layer.dataProvider().reloadData()
+                layer.updateExtents()
+            except Exception:
+                pass
             layers_extent.combineExtentWith(layer.extent())
 
         map_item = QgsLayoutItemMap(self.layout)
@@ -329,8 +336,8 @@ class BaseReport:
         grid.setCrs(geo_crs)
 
         def round_down_to_sig_fig(x: float) -> float:
-            if x == 0:
-                return 0
+            if x == 0 or math.isnan(x) or math.isinf(x):
+                return 1.0  # fallback grid interval for invalid extents
             exp = math.floor(math.log10(abs(x)))
             factor = 10**exp
             return math.floor(x / factor * 10) / 10 * factor

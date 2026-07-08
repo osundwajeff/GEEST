@@ -1022,6 +1022,22 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             gpkg_layer_path = f"{gpkg_path}|layername={layer_name}"
             layer = QgsVectorLayer(gpkg_layer_path, layer_name, "ogr")
 
+            # On Windows, the GeoPackage may be temporarily locked right after
+            # study area processing completes. Retry a few times before giving up.
+            if not layer.isValid():
+                import time as _time
+
+                for attempt in range(3):
+                    log_message(
+                        f"Layer '{layer_name}' not valid (attempt {attempt + 1}/3), retrying...",
+                        tag="GeoE3",
+                        level=Qgis.Info,
+                    )
+                    _time.sleep(1)
+                    layer = QgsVectorLayer(gpkg_layer_path, layer_name, "ogr")
+                    if layer.isValid():
+                        break
+
             if not layer.isValid():
                 log_message(
                     f"Failed to load '{layer_name}' layer from GeoPackage.",
@@ -1051,6 +1067,12 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
                 log_message(f"Refreshing existing layer: {existing_layer.name()}")
                 try:
                     existing_layer.reload()
+                    # Force the OGR provider to reload data and recompute extent.
+                    # On Windows, gpkg_contents extent can be stale after study area
+                    # creation because the WAL checkpoint may not propagate to QGIS's
+                    # already-open provider connection.
+                    existing_layer.dataProvider().reloadData()
+                    existing_layer.updateExtents()
                 except Exception as e:
                     # Skip refresh if layer is locked by background write operation
                     log_message(

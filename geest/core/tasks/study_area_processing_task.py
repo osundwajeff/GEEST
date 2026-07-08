@@ -1522,7 +1522,16 @@ class StudyAreaProcessingTask(QgsTask):
                 if add_model_columns_to_grid(self.gpkg_path, model_path):
                     log_message("Model columns added successfully")
                 else:
-                    log_message("Failed to add model columns to grid", level="WARNING")
+                    log_message("Failed to add model columns, retrying after delay...", level="WARNING")
+                    import time as _time
+
+                    _time.sleep(2)
+                    if not add_model_columns_to_grid(self.gpkg_path, model_path):
+                        raise RuntimeError(
+                            "Failed to add model columns to study_area_grid. "
+                            "This may be a Windows GeoPackage locking issue. "
+                            "Try reopening the project and re-running the analysis."
+                        )
             else:
                 log_message(f"Model file not found at {model_path}, skipping column addition", level="WARNING")
 

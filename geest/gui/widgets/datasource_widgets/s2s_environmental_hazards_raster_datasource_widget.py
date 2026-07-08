@@ -64,10 +64,11 @@ class S2SEnvironmentalHazardsRasterDataSourceWidget(S2SNTLRasterDataSourceWidget
     def add_internal_widgets(self) -> None:
         """Build controls and configure hazard-specific S2S defaults."""
         super().add_internal_widgets()
-        self.s2s_vector_field_combo.setLayer(None)
-        self.s2s_vector_field_combo.setCurrentIndex(-1)
-        self.s2s_vector_field_combo.setEnabled(False)
-        self.s2s_vector_field_combo.setVisible(False)
+        if hasattr(self, "s2s_vector_field_combo"):
+            self.s2s_vector_field_combo.setLayer(None)
+            self.s2s_vector_field_combo.setCurrentIndex(-1)
+            self.s2s_vector_field_combo.setEnabled(False)
+            self.s2s_vector_field_combo.setVisible(False)
         self.s2s_ntl_field = self._hazard_field_from_attributes()
         self.s2s_status_label.setToolTip(f"S2S field: {self.s2s_ntl_field}")
         self._select_existing_hazard_output_layer()

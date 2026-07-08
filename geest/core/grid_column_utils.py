@@ -83,6 +83,69 @@ def _checkpoint_wal(ds) -> None:
         pass
 
 
+def _ensure_column_exists(gpkg_path: str, column_name: str) -> bool:
+    """Ensure a column exists in study_area_grid, creating it if needed.
+
+    This is a safety net for Windows where add_model_columns_to_grid() may fail
+    due to file locking. Each write function can call this before writing to
+    guarantee the target column exists.
+
+    Args:
+        gpkg_path: Path to the GeoPackage containing study_area_grid.
+        column_name: Name of the column to ensure exists.
+
+    Returns:
+        True if the column exists (or was created), False on failure.
+    """
+    sanitized = _sanitize_column_name(column_name)
+    for attempt in range(SQLITE_WRITE_MAX_RETRIES):
+        ds = _open_gpkg_for_write(gpkg_path)
+        if not ds:
+            if attempt < SQLITE_WRITE_MAX_RETRIES - 1:
+                time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+                continue
+            return False
+
+        try:
+            layer = ds.GetLayerByName("study_area_grid")
+            if not layer:
+                ds = None
+                return False
+
+            layer_defn = layer.GetLayerDefn()
+            for i in range(layer_defn.GetFieldCount()):
+                if layer_defn.GetFieldDefn(i).GetName().lower() == sanitized.lower():
+                    return True  # Already exists
+
+            # Column doesn't exist — create it
+            field_defn = ogr.FieldDefn(sanitized, ogr.OFTReal)
+            if layer.CreateField(field_defn) == 0:
+                log_message(
+                    f"Lazily created grid column: {sanitized}",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+                _checkpoint_wal(ds)
+                return True
+
+            if attempt < SQLITE_WRITE_MAX_RETRIES - 1:
+                log_message(
+                    f"Failed to create column '{sanitized}' (attempt {attempt + 1}), retrying...",
+                    tag="GeoE3",
+                    level=Qgis.Warning,
+                )
+                time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+        finally:
+            ds = None
+
+    log_message(
+        f"Could not create grid column '{sanitized}' after {SQLITE_WRITE_MAX_RETRIES} attempts",
+        tag="GeoE3",
+        level=Qgis.Critical,
+    )
+    return False
+
+
 def extract_model_ids(model_path: str) -> Dict[str, List[str]]:
     """Extract all IDs from the model JSON file.
 
@@ -199,6 +262,7 @@ def add_model_columns_to_grid(gpkg_path: str, model_path: str) -> bool:
         return False
 
     try:
+        # Get existing field names to avoid duplicates
         ds = _open_gpkg_for_write(gpkg_path)
         if not ds:
             log_message(f"Could not open GeoPackage: {gpkg_path}", level=Qgis.Critical)
@@ -210,7 +274,6 @@ def add_model_columns_to_grid(gpkg_path: str, model_path: str) -> bool:
             ds = None
             return False
 
-        # Get existing field names to avoid duplicates
         layer_defn = layer.GetLayerDefn()
         existing_fields = set()
         for i in range(layer_defn.GetFieldCount()):
@@ -218,21 +281,52 @@ def add_model_columns_to_grid(gpkg_path: str, model_path: str) -> bool:
 
         # Add new columns as Real/Float type
         added_count = 0
+        failed_columns = []
         for col_name in column_names:
-            # Sanitize column name (replace spaces with underscores, limit length)
             sanitized_name = col_name.replace(" ", "_").replace("-", "_")[:63]
 
             if sanitized_name.lower() in existing_fields:
                 continue
 
             field_defn = ogr.FieldDefn(sanitized_name, ogr.OFTReal)
-            if layer.CreateField(field_defn) != 0:
-                log_message(f"Failed to create field: {sanitized_name}", level=Qgis.Warning)
-            else:
-                added_count += 1
+            created = False
+            for attempt in range(SQLITE_WRITE_MAX_RETRIES):
+                if layer.CreateField(field_defn) == 0:
+                    added_count += 1
+                    created = True
+                    break
+                if attempt < SQLITE_WRITE_MAX_RETRIES - 1:
+                    log_message(
+                        f"Failed to create field '{sanitized_name}' (attempt {attempt + 1}), retrying...",
+                        tag="GeoE3",
+                        level=Qgis.Warning,
+                    )
+                    time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+                    # Reopen dataset on retry — Windows may need a fresh connection
+                    ds = None
+                    ds = _open_gpkg_for_write(gpkg_path)
+                    if not ds:
+                        continue
+                    layer = ds.GetLayerByName("study_area_grid")
+                    if not layer:
+                        continue
 
+            if not created:
+                failed_columns.append(sanitized_name)
+                log_message(f"Failed to create field: {sanitized_name}", level=Qgis.Warning)
+
+        _checkpoint_wal(ds)
         ds.FlushCache()
         ds = None
+
+        if failed_columns:
+            log_message(
+                f"Added {added_count} columns, but {len(failed_columns)} failed: {failed_columns}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+            # Return True if at least some columns were added; lazy creation handles the rest
+            return added_count > 0
 
         log_message(f"Added {added_count} model columns to study_area_grid")
         return True
@@ -844,6 +938,9 @@ def clear_grid_column(gpkg_path: str, column_name: str) -> bool:
 
     sanitized_column = _sanitize_column_name(column_name)
 
+    # Ensure column exists — Windows can fail during add_model_columns_to_grid
+    _ensure_column_exists(gpkg_path, sanitized_column)
+
     try:
         ds = _open_gpkg_for_write(gpkg_path)
         if not ds:
@@ -888,6 +985,9 @@ def count_features_per_grid_cell(
         return -1
 
     sanitized_column = _sanitize_column_name(column_name)
+
+    # Ensure column exists — Windows can fail during add_model_columns_to_grid
+    _ensure_column_exists(gpkg_path, sanitized_column)
 
     try:
         # Load grid layer
@@ -1350,7 +1450,7 @@ def write_aggregation_to_grid(
             log_message(f"Could not open GeoPackage: {gpkg_path}", level=Qgis.Critical)
             return -1
 
-        layer, field_idx = _get_grid_layer_and_field_index(ds, target_column)
+        layer, field_idx = _get_grid_layer_and_field_index(ds, target_column, create_if_missing=True)
         if layer is None or field_idx < 0:
             ds = None
             return -1
@@ -1564,6 +1664,9 @@ def write_buffer_values_to_grid(
         return -1
 
     sanitized_column = _sanitize_column_name(column_name)
+
+    # Ensure column exists — Windows can fail during add_model_columns_to_grid
+    _ensure_column_exists(gpkg_path, sanitized_column)
 
     try:
         # Load grid layer

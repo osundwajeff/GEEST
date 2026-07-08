@@ -462,11 +462,32 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
 
         # Load study area extent from geopackage (most reliable source)
         extent = QgsRectangle()
+        source_crs = None
         study_area_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_bboxes", "temp_bbox", "ogr")
 
         if study_area_layer.isValid() and study_area_layer.featureCount() > 0:
             extent = study_area_layer.extent()
             source_crs = study_area_layer.crs()
+
+            # On Windows, the OGR GeoPackage driver can return a stale or null extent
+            # from gpkg_contents right after study area creation. If the extent looks
+            # invalid, recompute it directly from feature geometries.
+            if extent.isEmpty() or not extent.isFinite():
+                log_message(
+                    "study_area_bboxes extent is null/empty, computing from features",
+                    tag="GeoE3",
+                    level=Qgis.Warning,
+                )
+                extent = QgsRectangle()
+                for feat in study_area_layer.getFeatures():
+                    if feat.hasGeometry():
+                        geom = feat.geometry()
+                        if not geom.isEmpty():
+                            bbox = geom.boundingBox()
+                            if extent.isEmpty():
+                                extent = bbox
+                            else:
+                                extent.combineExtentWith(bbox)
 
             # Transform extent to EPSG:4326 (required by Overpass API)
             if source_crs.authid() != "EPSG:4326":
@@ -516,6 +537,52 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
                 "Please ensure your study area is properly configured.",
             )
             return
+
+        # WGS84 bounds validation — catch stale/garbage extents before sending to Overpass
+        if extent.xMinimum() < -180 or extent.xMaximum() > 180 or extent.yMinimum() < -90 or extent.yMaximum() > 90:
+            log_message(
+                f"Extent outside WGS84 bounds after transform: {extent.toString()}. "
+                f"Attempting to recompute from features.",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+            # Recompute extent from features in WGS84
+            wgs84_extent = QgsRectangle()
+            wgs84_crs = QgsCoordinateReferenceSystem("EPSG:4326")
+            # source_crs may be None if we came from the project layers fallback
+            crs_for_transform = source_crs if source_crs is not None else study_area_layer.crs()
+            for feat in study_area_layer.getFeatures():
+                if feat.hasGeometry():
+                    geom = feat.geometry()
+                    if not geom.isEmpty():
+                        bbox = geom.boundingBox()
+                        if crs_for_transform.isValid() and crs_for_transform.authid() != "EPSG:4326":
+                            transform = QgsCoordinateTransform(crs_for_transform, wgs84_crs, project)
+                            bbox = transform.transformBoundingBox(bbox)
+                        if wgs84_extent.isEmpty():
+                            wgs84_extent = bbox
+                        else:
+                            wgs84_extent.combineExtentWith(bbox)
+            if not wgs84_extent.isEmpty() and wgs84_extent.isFinite():
+                extent = wgs84_extent
+                log_message(
+                    f"Recomputed extent from features: {extent.toString()}",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+            else:
+                log_message(
+                    f"Invalid WGS84 extent: {extent.toString()}. Aborting OSM download.",
+                    tag="GeoE3",
+                    level=Qgis.Critical,
+                )
+                QMessageBox.warning(
+                    self,
+                    "Invalid Extent",
+                    f"Study area extent is invalid: {extent.toString()}\n\n"
+                    "This may be a GeoPackage driver issue. Try reopening the project.",
+                )
+                return
 
         if self.osm_download_type is None:
             log_message("No OSM download type set", tag="GeoE3", level=Qgis.Critical)
