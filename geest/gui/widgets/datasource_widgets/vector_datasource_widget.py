@@ -4,6 +4,7 @@
 This module contains functionality for vector datasource widget.
 """
 
+import json
 import os
 import urllib.parse
 
@@ -430,6 +431,51 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         self.layer_combo.setFocus()
         self.update_attributes()
 
+    def _load_admin_boundary_layer(self):
+        """Load admin boundary layer from model.json.
+
+        This is the same approach used by the road network panel for active
+        transport downloads. The admin boundary is a standalone file (e.g.
+        Admin0.shp) with reliable CRS metadata, unlike GeoPackage layers
+        which may have stale CRS after study area creation.
+
+        Returns:
+            QgsVectorLayer or None if not available.
+        """
+        settings = QSettings()
+        working_directory = settings.value("last_working_directory", "")
+        if not working_directory:
+            return None
+        model_path = os.path.join(working_directory, "model.json")
+        if not os.path.exists(model_path):
+            return None
+        try:
+            with open(model_path, "r") as f:
+                model = json.load(f)
+            admin_source = model.get("admin_boundary_layer_source")
+            if not admin_source:
+                return None
+            base_path = admin_source.split("|")[0] if "|" in admin_source else admin_source
+            if not os.path.exists(base_path):
+                return None
+            layer_name = os.path.splitext(os.path.basename(base_path))[0]
+            layer = QgsVectorLayer(admin_source, layer_name, "ogr")
+            if layer.isValid():
+                log_message(
+                    f"Loaded admin boundary layer for OSM download: {admin_source}",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+                return layer
+            log_message(
+                f"Admin boundary layer is invalid: {admin_source}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+        except Exception as e:
+            log_message(f"Error loading admin boundary layer: {e}", tag="GeoE3", level=Qgis.Warning)
+        return None
+
     def start_osm_download(self) -> None:
         """Start OSM data download process using proper QgsTask integration."""
         log_message("Starting OSM download...", tag="GeoE3", level=Qgis.Info)
@@ -463,7 +509,7 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         # Load study area extent from geopackage (most reliable source)
         extent = QgsRectangle()
         source_crs = None
-        study_area_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_bboxes", "temp_bbox", "ogr")
+        study_area_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_polygons", "temp_bbox", "ogr")
 
         if study_area_layer.isValid() and study_area_layer.featureCount() > 0:
             extent = study_area_layer.extent()
@@ -564,6 +610,44 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
                         else:
                             wgs84_extent.combineExtentWith(bbox)
             if not wgs84_extent.isEmpty() and wgs84_extent.isFinite():
+                # Final check — if still outside WGS84, the CRS transform was skipped
+                # (wrong CRS metadata). Try project CRS as fallback.
+                if (
+                    wgs84_extent.xMaximum() > 180
+                    or wgs84_extent.yMaximum() > 90
+                    or wgs84_extent.xMinimum() < -180
+                    or wgs84_extent.yMinimum() < -90
+                ):
+                    project_crs = project.crs() if project.crs().isValid() else None
+                    if project_crs and project_crs.authid() != "EPSG:4326":
+                        log_message(
+                            "Recomputed extent still outside WGS84 — trying project CRS transform",
+                            tag="GeoE3",
+                            level=Qgis.Warning,
+                        )
+                        transform = QgsCoordinateTransform(project_crs, wgs84_crs, project)
+                        wgs84_extent = transform.transformBoundingBox(wgs84_extent)
+
+                # If STILL outside bounds, abort — don't send garbage to Overpass
+                if (
+                    wgs84_extent.xMaximum() > 180
+                    or wgs84_extent.yMaximum() > 90
+                    or wgs84_extent.xMinimum() < -180
+                    or wgs84_extent.yMinimum() < -90
+                ):
+                    log_message(
+                        f"Invalid WGS84 extent after recomputation: {wgs84_extent.toString()}. Aborting OSM download.",
+                        tag="GeoE3",
+                        level=Qgis.Critical,
+                    )
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Extent",
+                        f"Study area extent is invalid: {wgs84_extent.toString()}\n\n"
+                        "This may be a GeoPackage CRS issue. Try reopening the project.",
+                    )
+                    return
+
                 extent = wgs84_extent
                 log_message(
                     f"Recomputed extent from features: {extent.toString()}",
@@ -595,22 +679,47 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         log_message(f"Output directory: {study_area_dir}", tag="GeoE3", level=Qgis.Info)
         log_message(f"Filename: {filename}", tag="GeoE3", level=Qgis.Info)
         log_message(f"Full output file path: {output_file_path}", tag="GeoE3", level=Qgis.Info)
-        log_message(f"Extent: {extent.asWktPolygon()}", tag="GeoE3", level=Qgis.Info)
-        log_message(f"Output CRS: {output_crs.authid()}", tag="GeoE3", level=Qgis.Info)
 
         if self.osm_download_button:
             self.osm_controls.set_running()
 
+        # Try admin boundary layer first (same approach as active transport).
+        # The admin boundary is a standalone file with reliable CRS metadata.
+        # OSMDownloaderTask will read the CRS and transform to WGS84 itself.
+        admin_layer = self._load_admin_boundary_layer()
+
         try:
-            # Create task using proper QgsTask-based approach
-            self.osm_task = OSMDownloaderTask(
-                osm_download_type=self.osm_download_type,
-                extents=extent,
-                output_path=output_file_path,
-                crs=output_crs,
-                use_cache=False,
-                delete_gpkg=True,
-            )
+            if admin_layer is not None:
+                # Primary path: pass reference_layer, let OSMDownloaderTask handle CRS
+                log_message("Using admin boundary layer as reference for OSM download", tag="GeoE3", level=Qgis.Info)
+                self.osm_task = OSMDownloaderTask(
+                    osm_download_type=self.osm_download_type,
+                    reference_layer=admin_layer,
+                    extents=None,
+                    output_path=output_file_path,
+                    crs=output_crs,
+                    use_cache=False,
+                    delete_gpkg=True,
+                )
+            else:
+                # Fallback: use pre-computed extent from study_area_polygons
+                log_message(
+                    "No admin boundary layer available, using pre-computed extent",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+                log_message(f"Extent: {extent.asWktPolygon()}", tag="GeoE3", level=Qgis.Info)
+                self.osm_task = OSMDownloaderTask(
+                    osm_download_type=self.osm_download_type,
+                    reference_layer=None,
+                    extents=extent,
+                    output_path=output_file_path,
+                    crs=output_crs,
+                    use_cache=False,
+                    delete_gpkg=True,
+                )
+
+            log_message(f"Output CRS: {output_crs.authid()}", tag="GeoE3", level=Qgis.Info)
 
             # Track if error already occurred to avoid duplicate messages
             self._osm_error_handled = False
