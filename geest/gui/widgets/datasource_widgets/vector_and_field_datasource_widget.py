@@ -79,7 +79,7 @@ class VectorAndFieldDataSourceWidget(BaseDataSourceWidget):
             clear_icon = QIcon(resources_path("resources", "icons", "clear.svg"))
             self.clear_button.setIcon(clear_icon)
             self.clear_button.setToolTip("Clear")
-            self.clear_button.setCursor(Qt.ArrowCursor)
+            self.clear_button.setCursor(Qt.CursorShape.ArrowCursor)
             self.clear_button.setStyleSheet("border: 0px; padding: 0px;")
             self.clear_button.clicked.connect(self.clear_shapefile)
             self.clear_button.setVisible(False)

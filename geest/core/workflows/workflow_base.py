@@ -13,11 +13,11 @@ from typing import Optional
 
 from qgis import processing
 from qgis.core import (
-    QgsField,
     Qgis,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsFeedback,
+    QgsField,
     QgsGeometry,
     QgsProcessingContext,
     QgsProcessingException,
@@ -662,6 +662,21 @@ class WorkflowBase(QObject):
                             area_name=area_name,
                         )
 
+                    if not raster_output and self.supports_empty_features_fallback:
+                        # e.g. points exist but none are reachable from the road
+                        # network, so no isochrones/buffers could be produced.
+                        log_message(
+                            f"{self.workflow_name} produced no raster output for area {area_name} "
+                            f"(index {index}); using neutral (0 score) fallback output.",
+                            tag="GeoE3",
+                            level=Qgis.Warning,
+                        )
+                        raster_output = self._build_empty_features_neutral_raster(
+                            current_area=current_area,
+                            current_bbox=current_bbox,
+                            index=index,
+                            area_name=area_name,
+                        )
                     if not raster_output:
                         raise RuntimeError(
                             f"{self.workflow_name} produced no raster output for area {area_name} (index {index})."

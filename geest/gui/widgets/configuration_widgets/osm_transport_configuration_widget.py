@@ -46,7 +46,7 @@ class OsmTransportConfigurationWidget(BaseConfigurationWidget):
             # make a label as an html table showing the unified active transport scores
             self.html_table_label = QLabel()
             self.html_table_label.setWordWrap(True)
-            self.html_table_label.setTextFormat(Qt.RichText)
+            self.html_table_label.setTextFormat(Qt.TextFormat.RichText)
             analysis_scale = self.attributes.get("analysis_scale") or "national"
             cycleway_config = CYCLEWAY_CLASSIFICATION.get(analysis_scale, CYCLEWAY_CLASSIFICATION["national"])
 

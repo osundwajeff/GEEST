@@ -60,8 +60,8 @@ from geest.core.constants import MAX_FEATURES_FOR_VECTOR
 from geest.core.reports import StudyAreaReport
 from geest.core.settings import set_setting, setting
 from geest.core.tasks import AnalysisReportTask
-from geest.core.women_considerations import resolve_women_enabling_for_factor
 from geest.core.utilities import add_grid_layer_to_map, add_to_map, validate_network_layer
+from geest.core.women_considerations import resolve_women_enabling_for_factor
 from geest.gui.dialogs import (
     AnalysisAggregationDialog,
     DimensionAggregationDialog,
@@ -220,11 +220,11 @@ class TreePanel(QWidget):
         self.treeView.expandAll()
 
         # Set the second and third columns to the exact width of their contents
-        self.treeView.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.treeView.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.treeView.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.treeView.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
         # Expand the first column to use the remaining space and resize with the dialog
-        self.treeView.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.treeView.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.treeView.header().setStretchLastSection(False)
         # Now hide the header
         self.treeView.header().hide()
@@ -244,7 +244,7 @@ class TreePanel(QWidget):
         # Create the split tool button
         self.prepare_analysis_button = QToolButton()
         self.prepare_analysis_button.setText("▶️ Run all")
-        self.prepare_analysis_button.setPopupMode(QToolButton.MenuButtonPopup)
+        self.prepare_analysis_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
         # Connect the main button click to run all
         self.prepare_analysis_button.clicked.connect(self.run_all)
@@ -402,17 +402,17 @@ class TreePanel(QWidget):
         :param parent_item: The parent item to process. If none, start from the root.
         """
         msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setIcon(QMessageBox.Icon.Warning)
         msg_box.setStyleSheet(theme_stylesheet())
         msg_box.setWindowTitle("Clear Workflows")
         msg_box.setText(
             f"This action will DELETE all files and folders in the working directory ({self.working_directory}). Do you want to continue?"
         )
-        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        open_folder_button = msg_box.addButton("Open Folder", QMessageBox.ActionRole)
-        msg_box.setDefaultButton(QMessageBox.No)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        open_folder_button = msg_box.addButton("Open Folder", QMessageBox.ButtonRole.ActionRole)
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
 
-        reply = msg_box.exec_()
+        reply = msg_box.exec()
 
         if msg_box.clickedButton() == open_folder_button:
             if self.working_directory:
@@ -422,7 +422,7 @@ class TreePanel(QWidget):
                     subprocess.run(["xdg-open", self.working_directory], check=False)  # nosec B603 B607
                 return
 
-        if reply == QMessageBox.No or reply == QMessageBox.Rejected:
+        if reply == QMessageBox.StandardButton.No or reply == QMessageBox.DialogCode.Rejected:
             return
         self.run_only_incomplete = False
         # Remove every file in self.working_directory except
@@ -842,7 +842,11 @@ class TreePanel(QWidget):
         # If shift is pressed, change the text to "Rerun Item Workflow"
         def update_action_text():
             """🔄 Update action text."""
-            text = "Rerun Item Workflow" if QApplication.keyboardModifiers() & Qt.ShiftModifier else "Run Item Workflow"
+            text = (
+                "Rerun Item Workflow"
+                if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier
+                else "Run Item Workflow"
+            )
             run_item_action.setText(text)
 
         # Update initially
@@ -861,7 +865,7 @@ class TreePanel(QWidget):
         run_item_action.triggered.connect(
             lambda: self.run_item(
                 item,
-                shift_pressed=QApplication.keyboardModifiers() & Qt.ShiftModifier,
+                shift_pressed=QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier,
             )
         )
         open_working_directory_action = QAction("Open Working Directory", self)
@@ -1038,7 +1042,7 @@ class TreePanel(QWidget):
             menu.addAction(disable_action)
 
         # Show the menu at the cursor's position
-        menu.exec_(self.treeView.viewport().mapToGlobal(position))
+        menu.exec(self.treeView.viewport().mapToGlobal(position))
 
     def generate_analysis_report(self):
         """Add a report showing analysis results."""
@@ -1343,11 +1347,11 @@ class TreePanel(QWidget):
         sorted_data = dict(sorted(attributes.items()))
 
         dialog = QDialog()
-        dialog.setWindowState(Qt.WindowMaximized)
+        dialog.setWindowState(Qt.WindowState.WindowMaximized)
         dialog.setWindowTitle("Attributes")
         dialog.resize(
-            int(QApplication.desktop().screenGeometry().width() * 0.9),
-            int(QApplication.desktop().screenGeometry().height() * 0.9),
+            int(QApplication.primaryScreen().geometry().width() * 0.9),
+            int(QApplication.primaryScreen().geometry().height() * 0.9),
         )
 
         layout = QVBoxLayout()
@@ -1358,7 +1362,9 @@ class TreePanel(QWidget):
         table.setRowCount(len(sorted_data))
         table.setColumnCount(2)
         table.setHorizontalHeaderLabels(["Key", "Value"])
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)  # Only the second column stretches
+        table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )  # Only the second column stretches
         # Track if "error_file" exists
         error_file_content = None
         # Populate the table with the sorted data
@@ -1433,7 +1439,7 @@ class TreePanel(QWidget):
         for child in item.getDescendantIndicators():
             log_message(child.data(0))
         log_message("----------------------")
-        dialog.exec_()
+        dialog.exec()
 
     def show_error_file_popup(self, error_file_content):
         """Show a popup message with the contents of the error file.
@@ -1444,8 +1450,8 @@ class TreePanel(QWidget):
         msg_box = QMessageBox()
         msg_box.setWindowTitle("Error File Contents")
         msg_box.setText(error_file_content)
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
 
     def copy_to_clipboard_as_markdown(self, table: QTableWidget):
         """Copy the table content as Markdown to the clipboard.
@@ -1501,7 +1507,7 @@ class TreePanel(QWidget):
         nested_table.setRowCount(len(nested_data))
         nested_table.setColumnCount(2)
         nested_table.setHorizontalHeaderLabels(["Key", "Value"])
-        nested_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        nested_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         for row, (key, value) in enumerate(nested_data.items()):
             key_item = QTableWidgetItem(str(key))  # Convert key to string
@@ -1514,8 +1520,8 @@ class TreePanel(QWidget):
 
         nested_table.setFixedHeight(len(nested_data) * 25)  # Adjust height based on the number of rows
         nested_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        nested_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        nested_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        nested_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nested_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         return nested_table
 
@@ -1547,7 +1553,7 @@ class TreePanel(QWidget):
         copy_action = menu.addAction("Copy")
 
         # Execute the menu at the position and check if an action was selected
-        action = menu.exec_(table.viewport().mapToGlobal(pos))
+        action = menu.exec(table.viewport().mapToGlobal(pos))
         if action == copy_action:
             # If "Copy" was selected, copy the cell's content to the clipboard
             clipboard = QApplication.clipboard()
@@ -1650,7 +1656,7 @@ class TreePanel(QWidget):
             analysis_item: The analysis item to edit.
         """
         dialog = AnalysisAggregationDialog(analysis_item, parent=self)
-        if dialog.exec_():  # If OK was clicked
+        if dialog.exec():  # If OK was clicked
             dialog.saveWeightingsToModel()
             self.save_json_to_working_directory()  # Save changes to the JSON if necessary
 
@@ -1665,7 +1671,7 @@ class TreePanel(QWidget):
         if not dimension_data:
             dimension_data = {}
         dialog = DimensionAggregationDialog(dimension_name, dimension_data, dimension_item, parent=self)
-        if dialog.exec_():  # If OK was clicked
+        if dialog.exec():  # If OK was clicked
             dialog.saveWeightingsToModel()
             self.save_json_to_working_directory()  # Save changes to the JSON if necessary
 
@@ -1687,7 +1693,7 @@ class TreePanel(QWidget):
             parent=self,
             selected_guids=selected_guids,
         )
-        if dialog.exec_():  # If OK was clicked
+        if dialog.exec():  # If OK was clicked
             dialog.save_weightings_to_model()
             self.save_json_to_working_directory()  # Save changes to the JSON if necessary
 
@@ -2032,10 +2038,10 @@ class TreePanel(QWidget):
 
         # Scale movies
         self.child_movie.setScaledSize(
-            self.child_movie.currentPixmap().size().scaled(row_height, row_height, Qt.KeepAspectRatio)
+            self.child_movie.currentPixmap().size().scaled(row_height, row_height, Qt.AspectRatioMode.KeepAspectRatio)
         )
         self.parent_movie.setScaledSize(
-            self.parent_movie.currentPixmap().size().scaled(row_height, row_height, Qt.KeepAspectRatio)
+            self.parent_movie.currentPixmap().size().scaled(row_height, row_height, Qt.AspectRatioMode.KeepAspectRatio)
         )
 
         # Set animated icon for the child

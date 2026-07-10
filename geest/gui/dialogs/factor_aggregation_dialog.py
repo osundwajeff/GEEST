@@ -168,24 +168,24 @@ class FactorAggregationDialog(CustomBaseDialog):
             self.table.setHorizontalHeaderLabels(
                 ["Input", "OSM Download", "Indicator", "Weight 0-1", "Use", "GUID", ""]
             )
-            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         else:
             self.table.setColumnCount(6)
             self.table.setHorizontalHeaderLabels(["Input", "Indicator", "Weight 0-1", "Use", "GUID", ""])
-            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
 
         if self.has_osm_column:
-            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
 
         if self.has_osm_column:
             self.table.setColumnWidth(1, 170)
@@ -242,14 +242,14 @@ class FactorAggregationDialog(CustomBaseDialog):
         layout.addLayout(help_layout)
 
         # Buttons — outside the scroll area so they remain always visible
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         auto_calculate_button = QPushButton("Balance Weights")
         toggle_guid_button = QPushButton("Show GUIDs")
         if self.weighting_column_visible:
-            self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ActionRole)
+            self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ButtonRole.ActionRole)
         verbose_mode = setting(key="verbose_mode", default=0)
         if verbose_mode:
-            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ActionRole)
+            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ButtonRole.ActionRole)
 
         self.button_box.accepted.connect(self.accept_changes)
         self.button_box.rejected.connect(self.reject)
@@ -279,7 +279,7 @@ class FactorAggregationDialog(CustomBaseDialog):
         if geometry:
             try:
                 self.restoreGeometry(geometry)
-                screen = QApplication.desktop().screenGeometry()
+                screen = QApplication.primaryScreen().geometry()
                 if self.width() > int(screen.width() * 0.85) or self.height() > int(screen.height() * 0.85):
                     settings.remove("FactorAggregationDialog/geometry_v2")
                 else:
@@ -287,7 +287,7 @@ class FactorAggregationDialog(CustomBaseDialog):
             except Exception:  # nosec B110
                 pass
         # Sensible default: cap at 900px wide, 80% screen height
-        screen = QApplication.desktop().screenGeometry()
+        screen = QApplication.primaryScreen().geometry()
         width = min(900, int(screen.width() * 0.65))
         height = min(int(screen.height() * 0.80), 750)
         self.resize(width, height)
@@ -651,7 +651,7 @@ class FactorAggregationDialog(CustomBaseDialog):
         """Validate weightings to ensure they sum to 1 and are within range."""
         # If weighting column is not visible (single indicator), always enable OK button
         if not self.weighting_column_visible:
-            self.button_box.button(QDialogButtonBox.Ok).setEnabled(True)
+            self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
             return
 
         try:
@@ -677,4 +677,4 @@ class FactorAggregationDialog(CustomBaseDialog):
                 spin_box.setStyleSheet("color: red;")  # Set font color to red if invalid
 
         # Enable or disable the OK button based on the validity of the sum
-        self.button_box.button(QDialogButtonBox.Ok).setEnabled(valid_sum)
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(valid_sum)

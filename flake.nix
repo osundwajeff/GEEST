@@ -40,6 +40,24 @@
         inherit extraPythonPackages;
       };
       postgresWithPostGIS = pkgs.postgresql.withPackages (ps: [ ps.postgis ]);
+      # Wrappers around scripts/run-docker-tests.sh (all logic lives in the
+      # dotfile script; these only bake in the QGIS major version argument).
+      mkDockerTestApp =
+        variant:
+        let
+          wrapper = pkgs.writeShellApplication {
+            name = "geoe3-docker-tests-${variant}";
+            runtimeInputs = [
+              pkgs.docker
+              pkgs.git
+            ];
+            text = ''exec "$PWD/scripts/run-docker-tests.sh" ${variant} "$@"'';
+          };
+        in
+        {
+          type = "app";
+          program = "${wrapper}/bin/geoe3-docker-tests-${variant}";
+        };
     in
     {
       packages.${system} = {
@@ -83,6 +101,10 @@
             "${profileName}"
           ];
         };
+        # Test suite in the official QGIS docker images (see scripts/run-docker-tests.sh)
+        test-qgis3 = mkDockerTestApp "3"; # QGIS 3.34 LTR (Qt5)
+        test-qgis4 = mkDockerTestApp "4"; # QGIS 4.x master (Qt6)
+        test-qgis = mkDockerTestApp "all"; # both
 
       };
 

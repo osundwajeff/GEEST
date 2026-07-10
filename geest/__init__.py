@@ -112,7 +112,7 @@ class CanvasOverlayFilter(QObject):
         Returns:
             False to let the event propagate normally.
         """
-        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             QSettings().setValue("geoe3/overlay_label", "")
             QSettings().setValue("geoe3/pie_data", "")
         return False
@@ -252,7 +252,7 @@ class GeoE3Plugin:
 
         # Check the dock area; default to right dock if not set
         settings = QSettings("ESMAP", "GeoE3")
-        dock_area = settings.value("GeoE3Dock/area", Qt.RightDockWidgetArea, type=int)
+        dock_area = settings.value("GeoE3Dock/area", Qt.DockWidgetArea.RightDockWidgetArea, type=int)
 
         # Add the dock widget to the restored or default dock area
         self.iface.addDockWidget(dock_area, self.dock_widget)
@@ -268,7 +268,7 @@ class GeoE3Plugin:
         if existing_docks:
             self.iface.mainWindow().tabifyDockWidget(existing_docks[0], self.dock_widget)
         else:
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_widget)
             legend_tab = self.iface.mainWindow().findChild(QApplication, "Legend")
             if legend_tab:
                 self.iface.mainWindow().tabifyDockWidget(legend_tab, self.dock_widget)
@@ -494,7 +494,7 @@ for module_name in list(sys.modules.keys()):
                 return self.combo.currentText()
 
         dialog = TestPickerDialog(all_test_options, self.iface.mainWindow())
-        if not dialog.exec_():
+        if not dialog.exec():
             return  # Cancelled
 
         selected_test = dialog.selected_test()
@@ -646,7 +646,7 @@ for module_name in list(sys.modules.keys()):
         file_dialog.setDefaultSuffix("prof")
         file_dialog.setNameFilter("Profile Data (*.prof);;Stats Text (*.txt);;All Files (*.*)")
 
-        if file_dialog.exec_():
+        if file_dialog.exec():
             selected_file = file_dialog.selectedFiles()[0]
             file_format = file_dialog.selectedNameFilter()
 

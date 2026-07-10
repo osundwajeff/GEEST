@@ -4,8 +4,8 @@
 This module contains functionality for geoe3 dock.
 """
 
-import os
 import json
+import os
 from typing import Optional
 
 from qgis.core import Qgis, QgsProject
@@ -311,7 +311,7 @@ class GeoE3Dock(QDockWidget):
             self.stacked_widget.setCurrentIndex(INTRO_PANEL)
 
             # Customize allowed areas for docking
-            self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+            self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
             self.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable)
 
             # Connect panel change event if custom logic is needed when switching panels
@@ -346,7 +346,7 @@ class GeoE3Dock(QDockWidget):
 
         with QPainter(self) as painter:
             # Calculate the scaling and cropping offsets
-            scaled_background = background_image.scaled(self.size(), Qt.KeepAspectRatioByExpanding)
+            scaled_background = background_image.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding)
 
             # Calculate the offset to crop from top and right to keep bottom left anchored
             x_offset = max(0, scaled_background.width() - self.width())

@@ -130,6 +130,18 @@ vim.api.nvim_create_user_command('GeestTests', function()
   float_term('./scripts/run-tests.sh', { title = ' Tests ' })
 end, { desc = 'Run tests' })
 
+vim.api.nvim_create_user_command('GeestTestsQgis3', function()
+  float_term('nix run .#test-qgis3', { title = ' Tests: QGIS 3.34 (docker) ' })
+end, { desc = 'Run tests in QGIS 3.34 docker' })
+
+vim.api.nvim_create_user_command('GeestTestsQgis4', function()
+  float_term('nix run .#test-qgis4', { title = ' Tests: QGIS 4.x (docker) ' })
+end, { desc = 'Run tests in QGIS 4.x docker' })
+
+vim.api.nvim_create_user_command('GeestTestsQgisAll', function()
+  float_term('nix run .#test-qgis', { title = ' Tests: QGIS 3.34 + 4.x (docker) ' })
+end, { desc = 'Run tests in both QGIS dockers' })
+
 vim.api.nvim_create_user_command('GeestClean', function()
   float_term('./scripts/clean.sh', { title = ' Clean ' })
 end, { desc = 'Clean build artifacts' })
@@ -257,7 +269,11 @@ if wk_ok then
     { '<leader>pcd', '<cmd>GeestDocstrings<cr>', desc = 'Check docstrings' },
     { '<leader>pce', '<cmd>GeestEncoding<cr>', desc = 'Check encodings' },
     -- Tests
-    { '<leader>pt', '<cmd>GeestTests<cr>', desc = 'Run tests' },
+    { '<leader>pt', group = 'Tests' },
+    { '<leader>ptt', '<cmd>GeestTests<cr>', desc = 'CI harness (docker-compose)' },
+    { '<leader>pt3', '<cmd>GeestTestsQgis3<cr>', desc = 'QGIS 3.34 docker' },
+    { '<leader>pt4', '<cmd>GeestTestsQgis4<cr>', desc = 'QGIS 4.x docker' },
+    { '<leader>pta', '<cmd>GeestTestsQgisAll<cr>', desc = 'Both QGIS dockers' },
     -- Clean
     { '<leader>px', group = 'Clean' },
     { '<leader>pxc', '<cmd>GeestClean<cr>', desc = 'Clean build artifacts' },

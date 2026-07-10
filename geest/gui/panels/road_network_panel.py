@@ -11,13 +11,13 @@ import traceback
 from qgis import processing
 from qgis.core import (
     Qgis,
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
     QgsFeedback,
     QgsMapLayerProxyModel,
     QgsProject,
     QgsVectorLayer,
     QgsWkbTypes,
-    QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform,
 )
 from qgis.PyQt.QtCore import QSettings, Qt, QUrl, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
@@ -80,12 +80,12 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
             details: Optional detailed error information.
         """
         msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setIcon(QMessageBox.Icon.Critical)
         msg_box.setWindowTitle("Error")
         msg_box.setText(message)
         if details:
             msg_box.setDetailedText(details)
-        msg_box.exec_()
+        msg_box.exec()
         self.progress_bar.setVisible(False)
         self.child_progress_bar.setVisible(False)
         self.progress_bar.setMinimum(0)
@@ -193,9 +193,9 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         self.road_layer_combo.currentIndexChanged.connect(self.update_road_layer_status)
         self.load_road_layer_button.clicked.connect(self.load_road_layer)
         self.download_active_transport_button.clicked.connect(self.download_active_transport_button_clicked)
-        self.description.setTextFormat(Qt.RichText)
+        self.description.setTextFormat(Qt.TextFormat.RichText)
         self.description.linkActivated.connect(self.open_link_in_browser)
-        self.description6.setTextFormat(Qt.RichText)
+        self.description6.setTextFormat(Qt.TextFormat.RichText)
         self.description6.setText(
             "Download a unified active transport network (roads + cycleways combined). "
             "Please note that the OpenStreetMap servers can be busy at times. If your download fails, "
@@ -282,7 +282,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
                 self.layer_status_label.setToolTip("Reprojecting layer, please wait...")
 
                 # Set waiting cursor to indicate processing
-                QApplication.setOverrideCursor(Qt.WaitCursor)
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                 QApplication.processEvents()  # Update UI to show red icon + tooltip
 
                 try:
@@ -493,7 +493,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         file_dialog.setFileMode(QFileDialog.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
 
-        if not file_dialog.exec_():
+        if not file_dialog.exec():
             return
 
         file_path = file_dialog.selectedFiles()[0]
@@ -693,7 +693,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         file_dialog.setFileMode(QFileDialog.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
 
-        if not file_dialog.exec_():
+        if not file_dialog.exec():
             return
 
         file_path = file_dialog.selectedFiles()[0]

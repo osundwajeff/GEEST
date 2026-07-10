@@ -18,7 +18,7 @@ class _FakeReply:
         self._content = content
 
     def attribute(self, key):
-        if key == QNetworkRequest.HttpStatusCodeAttribute:
+        if key == QNetworkRequest.Attribute.HttpStatusCodeAttribute:
             return self._status_code
         return None
 

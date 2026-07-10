@@ -40,7 +40,7 @@ class DownloadTaskControls:
         self.spinner_movie.setScaledSize(QSize(24, 24))
         self.spinner_label.setMovie(self.spinner_movie)
         self.spinner_label.setVisible(False)
-        self.spinner_label.setAlignment(Qt.AlignVCenter)
+        self.spinner_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(self.button)
         layout.addWidget(self.spinner_label)

@@ -6,8 +6,8 @@ This module contains functionality for create project panel.
 
 import json
 import os
-import sqlite3
 import shutil
+import sqlite3
 import time
 import traceback
 
@@ -327,7 +327,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         file_dialog = QFileDialog()
         file_dialog.setFileMode(QFileDialog.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
-        if file_dialog.exec_():
+        if file_dialog.exec():
             file_path = file_dialog.selectedFiles()[0]
             layer = QgsVectorLayer(file_path, "Boundary", "ogr")
             if not layer.isValid():
@@ -454,10 +454,10 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
                         f"H3 resolution {h3_resolution} can be very computationally expensive and may take "
                         "a long time to process.\n\nDo you want to continue?"
                     ),
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
                 )
-                if reply != QMessageBox.Yes:
+                if reply != QMessageBox.StandardButton.Yes:
                     self.enable_widgets()
                     return
 
@@ -757,11 +757,11 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             self,
             "GHSL Download Failed",
             error_message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             log_message("User chose to continue without GHSL data", tag="GeoE3", level=Qgis.Info)
             processor.set_ghsl_user_response(continue_without=True)
         else:

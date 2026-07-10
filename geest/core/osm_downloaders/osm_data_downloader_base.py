@@ -34,7 +34,6 @@ from qgis.core import (
     QgsGeometry,
     QgsNetworkAccessManager,
     QgsPointXY,
-    QgsProject,
     QgsRectangle,
     QgsVectorFileWriter,
     QgsVectorLayer,
@@ -200,7 +199,7 @@ class OSMDataDownloaderBase(ABC):
         log_message("Request sent. Response received...")
 
         # Check HTTP status code
-        status_code = response.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        status_code = response.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         log_message(f"HTTP Status Code: {status_code}")
         if status_code is None:
             # Get more detailed error information

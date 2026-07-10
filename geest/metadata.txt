@@ -15,7 +15,7 @@ about = The Geospatial Enabling Environments for Employment Spatial Tool, develo
 author = Kartoza for and with The World Bank
 email = info@kartoza.com, gost@worldbank.org
 description = Geospatial Enabling Environments for Employment Spatial Tool
-version = 2.0.3
+version = 2.0.4
 changelog = Version 2.0.3 - NTL Classification and UI Fixes
 
 	## New Features

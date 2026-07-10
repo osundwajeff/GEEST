@@ -76,7 +76,7 @@ class ORSClient(QObject):
         request = QNetworkRequest(QUrl(url))
 
         # Set necessary headers for the ORS API
-        request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
+        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
         request.setRawHeader(b"Authorization", self.api_key.encode())
 
         # Convert parameters (Python dict) to JSON
@@ -89,7 +89,7 @@ class ORSClient(QObject):
         reply = self.network_manager.blockingPost(request, data)
 
         # Check HTTP status code
-        status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         if status_code is None:
             raise RuntimeError("No status code received. Network issue?")
 

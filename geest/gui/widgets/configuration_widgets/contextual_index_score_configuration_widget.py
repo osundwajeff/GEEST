@@ -49,7 +49,7 @@ class ContextualIndexScoreConfigurationWidget(BaseConfigurationWidget):
             mapping_table_html += "</table>"
             self.html_table_label: QLabel = QLabel()
             self.html_table_label.setWordWrap(True)
-            self.html_table_label.setTextFormat(Qt.RichText)
+            self.html_table_label.setTextFormat(Qt.TextFormat.RichText)
             self.html_table_label.setText(mapping_table_html)
             self.internal_layout.addWidget(self.html_table_label)
         except Exception as e:

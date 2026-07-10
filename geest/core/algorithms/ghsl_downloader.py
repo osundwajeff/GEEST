@@ -179,7 +179,7 @@ class GHSLDownloader:
             downloader.downloadCompleted.connect(on_finished)
             downloader.downloadError.connect(on_error)
 
-            loop.exec_()
+            loop.exec()
         else:
             log_message(f"Using cached zip: {zip_path}")
 
