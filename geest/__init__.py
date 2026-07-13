@@ -118,6 +118,42 @@ class CanvasOverlayFilter(QObject):
         return False
 
 
+def _dock_area_to_int(area):
+    """Portable Qt enum → int.
+
+    PyQt5 sip enums support ``int(enum)``; PyQt6 maps DockWidgetArea to a
+    pure ``enum.Flag`` where ``int(enum)`` raises and ``.value`` must be
+    used instead.
+    """
+    try:
+        return int(area)
+    except TypeError:
+        return int(area.value)
+
+
+def _to_dock_widget_area(value):
+    """Coerce a QSettings value to a valid Qt.DockWidgetArea.
+
+    PyQt6 no longer auto-converts ints to Qt enums, and the dock area is
+    persisted in QSettings as an int. Anything invalid (including
+    NoDockWidgetArea) falls back to the right dock area.
+    """
+    valid_areas = (
+        Qt.DockWidgetArea.LeftDockWidgetArea,
+        Qt.DockWidgetArea.RightDockWidgetArea,
+        Qt.DockWidgetArea.TopDockWidgetArea,
+        Qt.DockWidgetArea.BottomDockWidgetArea,
+    )
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return Qt.DockWidgetArea.RightDockWidgetArea
+    for area in valid_areas:
+        if value == _dock_area_to_int(area):
+            return area
+    return Qt.DockWidgetArea.RightDockWidgetArea
+
+
 def classFactory(iface):  # pylint: disable=missing-function-docstring
     """🔄 Classfactory.
 
@@ -228,6 +264,14 @@ class GeoE3Plugin:
         self.debug_running = False
         self.label_overlay = None  # for rendering info over the canvas
         self.pie_overlay = None  # for rendering pie chart over the canvas
+        # Remove any stale dock left behind by a previous load — a crashed
+        # initGui, or a plugin reload racing a queued deleteLater — so
+        # reloads never stack duplicate GeoE3DockWidget instances.
+        for stale_dock in self.iface.mainWindow().findChildren(QDockWidget, "GeoE3DockWidget"):
+            self.iface.removeDockWidget(stale_dock)
+            stale_dock.setParent(None)
+            stale_dock.deleteLater()
+
         # Create the dock widget
         self.dock_widget = GeoE3Dock(
             parent=self.iface.mainWindow(),
@@ -236,9 +280,9 @@ class GeoE3Plugin:
         # Dont remove this, needed for geometry restore....
         self.dock_widget.setObjectName("GeoE3DockWidget")  # Set a unique object name
         self.dock_widget.setFeatures(
-            QDockWidget.DockWidgetClosable  # noqa: W503
-            | QDockWidget.DockWidgetMovable  # noqa: W503
-            | QDockWidget.DockWidgetFloatable  # noqa: W503
+            QDockWidget.DockWidgetFeature.DockWidgetClosable  # noqa: W503
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable  # noqa: W503
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable  # noqa: W503
         )
         QgsProject.instance().readProject.connect(self.dock_widget.qgis_project_changed)
 
@@ -252,7 +296,9 @@ class GeoE3Plugin:
 
         # Check the dock area; default to right dock if not set
         settings = QSettings("ESMAP", "GeoE3")
-        dock_area = settings.value("GeoE3Dock/area", Qt.DockWidgetArea.RightDockWidgetArea, type=int)
+        dock_area = _to_dock_widget_area(
+            settings.value("GeoE3Dock/area", _dock_area_to_int(Qt.DockWidgetArea.RightDockWidgetArea), type=int)
+        )
 
         # Add the dock widget to the restored or default dock area
         self.iface.addDockWidget(dock_area, self.dock_widget)
@@ -559,9 +605,10 @@ for module_name in list(sys.modules.keys()):
             # Save geometry
             settings.setValue("GeoE3Dock/geometry", self.dock_widget.saveGeometry())
 
-            # Save dock area (left or right)
+            # Save dock area (left or right) as a plain int: PyQt6 enums do
+            # not round-trip through QSettings, ints do.
             dock_area = self.iface.mainWindow().dockWidgetArea(self.dock_widget)
-            settings.setValue("GeoE3Dock/area", dock_area)
+            settings.setValue("GeoE3Dock/area", _dock_area_to_int(dock_area))
 
     def restore_geometry(self) -> None:
         """
@@ -576,9 +623,9 @@ for module_name in list(sys.modules.keys()):
                 self.dock_widget.restoreGeometry(geometry)
 
             # Restore dock area (with fallback to old GeestDock key for backward compatibility)
-            dock_area = settings.value("GeoE3Dock/area", type=int) or settings.value("GeestDock/area", type=int)
-            if dock_area is not None:
-                self.iface.addDockWidget(dock_area, self.dock_widget)
+            stored_area = settings.value("GeoE3Dock/area", type=int) or settings.value("GeestDock/area", type=int)
+            if stored_area:
+                self.iface.addDockWidget(_to_dock_widget_area(stored_area), self.dock_widget)
 
     def setup_profiler_actions(self):
         """Set up cProfiler actions for developer mode."""
@@ -642,7 +689,7 @@ for module_name in list(sys.modules.keys()):
 
         # Ask user for file location
         file_dialog = QFileDialog()
-        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         file_dialog.setDefaultSuffix("prof")
         file_dialog.setNameFilter("Profile Data (*.prof);;Stats Text (*.txt);;All Files (*.*)")
 
@@ -787,9 +834,12 @@ for module_name in list(sys.modules.keys()):
             self.iface.mapCanvas().viewport().removeEventFilter(self._canvas_overlay_filter)
             self._canvas_overlay_filter = None
 
-        # Remove dock widget if it exists
+        # Remove dock widget if it exists. Reparent to None before the
+        # queued deleteLater so an immediate plugin reload cannot find the
+        # old instance still attached to the main window.
         if self.dock_widget:
             self.iface.removeDockWidget(self.dock_widget)
+            self.dock_widget.setParent(None)
             self.dock_widget.deleteLater()
             self.dock_widget = None
 

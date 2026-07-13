@@ -29,7 +29,7 @@ from geest.core.grid_column_utils import (
 )
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class PolygonPerCellWorkflow(WorkflowBase):
@@ -91,7 +91,7 @@ class PolygonPerCellWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                return False
+                raise WorkflowNotConfiguredError("No polygon layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_path, "polygon_per_cell_layer", "ogr")
         self.workflow_name = "polygon_per_cell"
         self.supports_empty_features_fallback = True
@@ -304,11 +304,10 @@ class PolygonPerCellWorkflow(WorkflowBase):
             raise RuntimeError(f"Could not open GeoPackage for Education proxy update: {self.gpkg_path}")
 
         try:
-            q = lambda name: f'"{name.replace(" ", "_").replace("-", "_")[:63]}"'
 
-            c11 = q(temp_columns["ghs_11_pop"])
-            c12 = q(temp_columns["ghs_12_pop"])
-            c13 = q(temp_columns["ghs_13_pop"])
+            def q(name):
+                return f'"{name.replace(" ", "_").replace("-", "_")[:63]}"'
+
             c22 = q(temp_columns["ghs_22_pop"])
             c23 = q(temp_columns["ghs_23_pop"])
             c30 = q(temp_columns["ghs_30_pop"])

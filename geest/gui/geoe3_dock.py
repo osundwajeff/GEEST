@@ -312,7 +312,9 @@ class GeoE3Dock(QDockWidget):
 
             # Customize allowed areas for docking
             self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-            self.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable)
+            self.setFeatures(
+                QDockWidget.DockWidgetFeature.DockWidgetClosable | QDockWidget.DockWidgetFeature.DockWidgetMovable
+            )
 
             # Connect panel change event if custom logic is needed when switching panels
             self.stacked_widget.currentChanged.connect(self.on_panel_changed)

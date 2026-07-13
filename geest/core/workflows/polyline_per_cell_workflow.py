@@ -27,7 +27,7 @@ from geest.core.grid_column_utils import (
 )
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class PolylinePerCellWorkflow(WorkflowBase):
@@ -73,7 +73,7 @@ class PolylinePerCellWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                return False
+                raise WorkflowNotConfiguredError("No polyline layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_path, "polyline_per_cell Layer", "ogr")
         self.workflow_name = "polyline_per_cell"
         self.supports_empty_features_fallback = True

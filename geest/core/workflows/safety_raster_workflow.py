@@ -23,7 +23,7 @@ from geest.core.grid_column_utils import write_joined_values_to_grid, write_spat
 from geest.core.jenks import calculate_goodness_of_variance_fit, jenks_natural_breaks
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class SafetyRasterWorkflow(WorkflowBase):
@@ -116,7 +116,7 @@ class SafetyRasterWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                return False
+                raise WorkflowNotConfiguredError("No night-time lights raster configured for this indicator")
         self.raster_layer = QgsRasterLayer(layer_name, "Nighttime Lights Raster", "gdal")
 
     def _process_raster_for_area(

@@ -31,7 +31,7 @@ from geest.core.grid_column_utils import (
 from geest.core.workflows.mappings import MAPPING_REGISTRY
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class SinglePointBufferWorkflow(WorkflowBase):
@@ -74,12 +74,12 @@ class SinglePointBufferWorkflow(WorkflowBase):
                 tag="GeoE3",
                 level=Qgis.Critical,
             )
-            return False
+            raise WorkflowNotConfiguredError("No point layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_source, "points", provider_type)
         if not self.features_layer.isValid():
             log_message("single_buffer_point_layer not valid", level=Qgis.Critical)
             log_message(f"Layer Source: {layer_source}", level=Qgis.Critical)
-            return False
+            raise WorkflowNotConfiguredError(f"Point layer for this indicator is not readable: {layer_source}")
         factor_id = None
         if item.isIndicator() and item.parentItem:
             factor_id = item.parentItem.attribute("id", None)

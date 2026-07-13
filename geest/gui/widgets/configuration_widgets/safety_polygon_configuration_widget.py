@@ -44,7 +44,7 @@ class SafetyPolygonConfigurationWidget(BaseConfigurationWidget):
         fusion_style = QStyleFactory.create("Fusion")
         if fusion_style is not None:
             spin_box.setStyle(fusion_style)
-        spin_box.setButtonSymbols(QAbstractSpinBox.UpDownArrows)
+        spin_box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.UpDownArrows)
         if spin_box.lineEdit() is not None:
             spin_box.lineEdit().setStyleSheet(f"color: {text_color};")
 

@@ -7,7 +7,7 @@ This module contains functionality for open project panel.
 import os
 
 from qgis.core import Qgis  # noqa F401
-from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QFont, QFontMetrics
 from qgis.PyQt.QtWidgets import QComboBox, QFileDialog, QWidget
 
@@ -128,7 +128,7 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
         Returns:
             The result of the operation.
         """
-        if obj == self.previous_project_combo and event.type() == event.Resize:
+        if obj == self.previous_project_combo and event.type() == QEvent.Type.Resize:
             # Reapply elision for all items in the combo box on resize
             for index in range(self.previous_project_combo.count()):
                 full_path = self.previous_project_combo.itemData(index)

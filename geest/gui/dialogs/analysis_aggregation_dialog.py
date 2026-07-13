@@ -308,7 +308,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
             initial_state = Qt.CheckState.Checked if self.is_checkbox_checked(row) else Qt.CheckState.Unchecked
             self.toggle_row_widgets(row, initial_state)
         # Set the table widget height to be no taller than its content
-        self.table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+        self.table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
         self.table.resizeColumnsToContents()
         self.table.resizeRowsToContents()
         self.table.setMaximumHeight(
@@ -346,7 +346,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         """⚙️ Aggregation toolbutton clicked."""
         # Show a file dialog to select a raster file
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Vector files (*.shp *.gpkg)")
         if file_dialog.exec():
             self.aggregation_combo.setCurrentIndex(0)
@@ -358,7 +358,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         """⚙️ Population toolbutton clicked."""
         # Show a file dialog to select a raster file
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Raster files (*.tif *.tiff *.asc)")
         if file_dialog.exec():
             self.population_combo.setCurrentIndex(0)
@@ -370,7 +370,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         """⚙️ Point toolbutton clicked."""
         # Show a file dialog to select a raster file
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Vector files (*.shp *.gpkg)")
         if file_dialog.exec():
             self.point_combo.setCurrentIndex(0)
@@ -382,7 +382,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         """⚙️ Polygon toolbutton clicked."""
         # Show a file dialog to select a raster file
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Vector files (*.shp *.gpkg)")
         if file_dialog.exec():
             self.polygon_combo.setCurrentIndex(0)
@@ -394,7 +394,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         """⚙️ Raster toolbutton clicked."""
         # Show a file dialog to select a raster file
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Raster files (*.tif *.tiff *.asc)")
         if file_dialog.exec():
             self.raster_combo.setCurrentIndex(0)

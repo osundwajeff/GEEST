@@ -18,7 +18,7 @@ from qgis.PyQt.QtCore import QVariant
 from geest.core import JsonTreeItem
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class SafetyPolygonWorkflow(WorkflowBase):
@@ -62,7 +62,7 @@ class SafetyPolygonWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                return False
+                raise WorkflowNotConfiguredError("No safety polygon layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_path, "features_layer", "ogr")
         self.selected_field = self.attributes.get("classify_safety_polygon_into_classes_selected_field", "")
         # This is a dict with keys being unique values from the selected field

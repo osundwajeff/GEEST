@@ -490,7 +490,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         with a unique filename based on the original layer name.
         """
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
 
         if not file_dialog.exec():
@@ -690,7 +690,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
     def load_reference_layer(self):
         """Load reference (admin boundary) layer from file."""
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
 
         if not file_dialog.exec():

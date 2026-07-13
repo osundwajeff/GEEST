@@ -21,6 +21,7 @@ from qgis.core import (
     QgsLayerTreeGroup,
     QgsProcessingContext,
     QgsProject,
+    QgsTask,
     QgsVectorLayer,
 )
 from qgis.gui import QgsMessageBar
@@ -57,6 +58,7 @@ from geest.core.algorithms import (
     WEEByPopulationScoreProcessingTask,
 )
 from geest.core.constants import MAX_FEATURES_FOR_VECTOR
+from geest.core.i18n import tr
 from geest.core.reports import StudyAreaReport
 from geest.core.settings import set_setting, setting
 from geest.core.tasks import AnalysisReportTask
@@ -190,7 +192,7 @@ class TreePanel(QWidget):
 
         # Create a CustomTreeView widget to handle editing and reverts
         self.treeView = JsonTreeView()
-        self.treeView.setDragDropMode(QTreeView.InternalMove)
+        self.treeView.setDragDropMode(QTreeView.DragDropMode.InternalMove)
         self.treeView.setDefaultDropAction(Qt.DropAction.MoveAction)
 
         # Create a model for the QTreeView using custom JsonTreeModel
@@ -302,7 +304,7 @@ class TreePanel(QWidget):
         self.workflow_progress_bar.setFixedWidth(200)
         button_bar.addWidget(self.workflow_progress_bar)
 
-        self.treeView.setEditTriggers(QTreeView.NoEditTriggers)
+        self.treeView.setEditTriggers(QTreeView.EditTrigger.NoEditTriggers)
 
         layout.addLayout(button_bar)
         self.setLayout(layout)
@@ -477,6 +479,9 @@ class TreePanel(QWidget):
             level=Qgis.Info,
         )
         self.working_directory = new_directory
+        # Verify (and self-heal if needed) the study area GeoPackage before
+        # the user starts working with this project.
+        self.check_study_area_gpkg_health(reason="project open")
         model_path = os.path.join(new_directory, "model.json")
 
         project_path = QgsProject.instance().fileName()
@@ -549,6 +554,86 @@ class TreePanel(QWidget):
             self.treeView.expandAll()
         # Collapse any factors that have only a single indicator
         self.treeView.collapse_single_nodes()
+
+    def check_study_area_gpkg_health(self, reason: str = "") -> None:
+        """Run a GeoPackage health check (with in-place self-heal) in the background.
+
+        Checks the study area GeoPackage for corruption (stale WAL journals,
+        duplicated schema objects from historic write races, structural btree
+        damage) and repairs it in place when possible. Runs as a QgsTask so
+        the UI never blocks, even on very large GeoPackages.
+
+        Args:
+            reason: Short description of what triggered the check (for logs).
+        """
+        if not self.working_directory:
+            return
+        gpkg_path = os.path.join(self.working_directory, "study_area", "study_area.gpkg")
+        if not os.path.exists(gpkg_path):
+            return
+
+        def _check(task) -> bool:
+            from geest.core.gpkg_doctor import heal_geopackage
+
+            report = heal_geopackage(
+                gpkg_path,
+                log=lambda message: log_message(message, tag="GeoE3", level=Qgis.Warning),
+            )
+            if report.was_corrupt:
+                log_message(
+                    f"GeoPackage health check ({reason}): {report.summary()}",
+                    tag="GeoE3",
+                    level=Qgis.Warning if report.healthy else Qgis.Critical,
+                )
+            else:
+                log_message(
+                    f"GeoPackage health check ({reason}): {os.path.basename(gpkg_path)} is healthy",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+            self._last_gpkg_health_report = report
+            return report.healthy
+
+        def _finished(exception, healthy=None) -> None:
+            report = getattr(self, "_last_gpkg_health_report", None)
+            if exception is not None or report is None:
+                return
+            if report.was_corrupt and report.healthy:
+                try:
+                    iface.messageBar().pushMessage(
+                        tr("GeoE3"),
+                        tr(
+                            "The study area GeoPackage was corrupted and has been "
+                            "repaired. Please reload the project layers."
+                        ),
+                        level=Qgis.Warning,
+                        duration=15,
+                    )
+                except Exception:  # nosec B110 — headless/test environments have no iface
+                    pass
+            elif report.was_corrupt and not report.healthy:
+                try:
+                    iface.messageBar().pushMessage(
+                        tr("GeoE3"),
+                        tr(
+                            "The study area GeoPackage is corrupted and could not "
+                            "be repaired automatically. Re-create the study area "
+                            "or restore from a backup."
+                        ),
+                        level=Qgis.Critical,
+                        duration=0,
+                    )
+                except Exception:  # nosec B110
+                    pass
+
+        task = QgsTask.fromFunction(
+            f"GeoE3 GeoPackage health check ({reason})",
+            _check,
+            on_finished=_finished,
+        )
+        # Keep a reference so the task is not garbage collected mid-run.
+        self._gpkg_health_task = task
+        QgsApplication.taskManager().addTask(task)
 
     @pyqtSlot()
     def set_working_directory(self, working_directory):
@@ -1920,6 +2005,18 @@ class TreePanel(QWidget):
             attributes["analysis_mode"] = "analysis_aggregation"
         task = self.queue_manager.add_workflow(item, self.cell_size_m(), self.analysis_scale())
         if task is None:
+            # The workflow declined the job (e.g. data source not configured).
+            try:
+                iface.messageBar().pushMessage(
+                    tr("GeoE3"),
+                    tr("'{name}' was skipped — configure its data source and run it again.").format(
+                        name=item.attribute("id", item.guid)
+                    ),
+                    level=Qgis.Warning,
+                    duration=10,
+                )
+            except Exception:  # nosec B110 — headless/test environments have no iface
+                pass
             return
 
         self.hide_validation_warning()
@@ -2355,6 +2452,9 @@ class TreePanel(QWidget):
             self.help_button.setVisible(True)
             self.project_button.setVisible(True)
             self.workflow_scope_item = None
+            # All workflows have finished writing — verify the study area
+            # GeoPackage is still sound and self-heal it if not.
+            self.check_study_area_gpkg_health(reason="after workflows")
             return
         # pop the first item from the queue
         next_workflow = self.workflow_queue.pop(0)

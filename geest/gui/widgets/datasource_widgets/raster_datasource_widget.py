@@ -11,7 +11,7 @@ from qgis.core import Qgis, QgsMapLayerProxyModel, QgsProject
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt.QtCore import QSettings, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QToolButton
+from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QStyle, QToolButton
 
 from geest.utilities import log_message, resources_path
 
@@ -128,7 +128,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         """Reposition the clear button when the line edit is resized."""
         log_message("Resizing clear button")
         # Position the clear button inside the line edit
-        frame_width = self.raster_line_edit.style().pixelMetric(self.raster_line_edit.style().PM_DefaultFrameWidth)
+        frame_width = self.raster_line_edit.style().pixelMetric(QStyle.PixelMetric.PM_DefaultFrameWidth)
         self.raster_line_edit.setStyleSheet(
             f"QLineEdit {{ padding-right: {self.clear_button.sizeHint().width() + frame_width}px; }}"  # noqa E702,E202,E201
         )

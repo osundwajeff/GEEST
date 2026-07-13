@@ -4,15 +4,17 @@
 This module contains functionality for workflow queue manager.
 """
 
-from qgis.PyQt.QtCore import QObject, pyqtSignal
-from qgis.core import Qgis, QgsProcessingContext, QgsProject, QgsTask
 from typing import Optional
+
+from qgis.core import Qgis, QgsProcessingContext, QgsProject, QgsTask
+from qgis.PyQt.QtCore import QObject, pyqtSignal
 
 from geest.utilities import log_message
 
 from .json_tree_item import JsonTreeItem
 from .workflow_job import WorkflowJob
 from .workflow_queue import WorkflowQueue
+from .workflows.workflow_base import WorkflowNotConfiguredError
 
 
 class WorkflowQueueManager(QObject):
@@ -91,13 +93,24 @@ class WorkflowQueueManager(QObject):
         #    any changes made to the item will be reflected in the tree directly
         # Use unique description to avoid collision in active_tasks dictionary
         # when running multiple concurrent tasks (fixes issue #231)
-        task = WorkflowJob(
-            description=f"GeoE3: {item.attribute('id', item.guid)}",
-            item=item,
-            cell_size_m=cell_size_m,
-            analysis_scale=analysis_scale,
-            context=context,
-        )
+        try:
+            task = WorkflowJob(
+                description=f"GeoE3: {item.attribute('id', item.guid)}",
+                item=item,
+                cell_size_m=cell_size_m,
+                analysis_scale=analysis_scale,
+                context=context,
+            )
+        except WorkflowNotConfiguredError as error:
+            # The workflow declined the job (e.g. no data source configured
+            # for the indicator) — skip it rather than crash the run.
+            log_message(
+                f"Skipping {item.attribute('id', item.guid)}: {error}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+            self.processing_error.emit(str(error))
+            return None
         self.workflow_queue.add_job(task)
         log_message(f"Task added: {task.description()}")
         return task

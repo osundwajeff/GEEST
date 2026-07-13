@@ -83,9 +83,16 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         self.initUI()
 
     def _should_skip_map_refresh(self) -> bool:
-        """Rate-limit map refresh attempts while study area is writing."""
+        """Rate-limit map refresh attempts while study area is writing.
+
+        While the study area task's unified writer is active every map
+        reload opens fresh read connections against a GeoPackage under
+        heavy write load, so refreshes are spaced well apart; once the
+        task has finished the usual snappy interval applies.
+        """
+        interval = 5.0 if getattr(self, "study_area_task", None) is not None else 0.5
         now = time.monotonic()
-        if now - self._last_map_refresh_ts < 0.5:
+        if now - self._last_map_refresh_ts < interval:
             return True
         self._last_map_refresh_ts = now
         return False
@@ -325,7 +332,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
     def load_boundary(self):
         """Load a boundary layer from a file."""
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
         if file_dialog.exec():
             file_path = file_dialog.selectedFiles()[0]
@@ -697,6 +704,10 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             tag="GeoE3",
             level=Qgis.Info,
         )
+        # Final refresh now that the unified writer has stopped — during the
+        # run refreshes are heavily rate-limited (_should_skip_map_refresh).
+        self._last_map_refresh_ts = 0.0
+        self.add_bboxes_to_map()
 
         # Use child progress bar for report generation (main bar stays at 100%)
         self.child_progress_bar.setMinimum(0)
