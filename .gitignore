@@ -39,9 +39,6 @@ ENV/
 .env.*
 
 # PyInstaller
-*.**`.gitignore` continued:**
-```plaintext
-# PyInstaller
 *.manifest
 *.spec
 
@@ -115,3 +112,13 @@ geest/extlibs/*
 !geest/extlibs/.gitkeep
 PROMPT.log
 log.txt
+claude.sh
+claude.out
+srs-gitignore/
+srs/dist/
+.pip-install.log
+qgis_memory.log
+symbology-style.db
+vscode.log
+flake.lock.pre-nixpkgs-qgis.bak
+TODO.md
