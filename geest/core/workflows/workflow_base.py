@@ -6,7 +6,6 @@ This module contains functionality for workflow base.
 
 import datetime
 import os
-import sqlite3
 import traceback
 from abc import abstractmethod
 from typing import Optional
@@ -45,6 +44,15 @@ from geest.core.grid_column_utils import (
     write_raster_values_to_grid,
 )
 from geest.utilities import log_layer_count, log_message, resources_path
+
+
+class WorkflowNotConfiguredError(RuntimeError):
+    """Raised by a workflow's __init__ when its data source is missing/invalid.
+
+    A plain ``return False`` inside ``__init__`` is a TypeError in Python;
+    this exception lets the queue manager decline the job gracefully and
+    tell the user which indicator still needs configuring.
+    """
 
 
 class WorkflowBase(QObject):
@@ -199,6 +207,44 @@ class WorkflowBase(QObject):
             tag="GeoE3",
             level=Qgis.Warning,
         )
+        metadata_crs = self._read_crs_from_gpkg_metadata()
+        if metadata_crs is not None:
+            crs = metadata_crs
+
+        if not crs.isValid():
+            # The GeoPackage may be corrupt (e.g. duplicated rtree triggers
+            # from a past write race). Attempt an in-place self-heal, then
+            # retry the metadata read once before giving up.
+            from geest.core.gpkg_doctor import heal_geopackage
+
+            report = heal_geopackage(
+                self.gpkg_path,
+                log=lambda message: log_message(message, tag="GeoE3", level=Qgis.Warning),
+            )
+            if report.was_corrupt and report.healthy:
+                log_message(
+                    f"Study area GeoPackage self-healed: {report.summary()}",
+                    tag="GeoE3",
+                    level=Qgis.Warning,
+                )
+                metadata_crs = self._read_crs_from_gpkg_metadata()
+                if metadata_crs is not None:
+                    crs = metadata_crs
+
+        if not crs.isValid():
+            integrity_status = self._quick_check_gpkg()
+            raise ValueError(
+                f"Could not determine CRS for study area from {self.gpkg_path}. "
+                f"GeoPackage integrity check: {integrity_status}."
+            )
+        return crs
+
+    def _read_crs_from_gpkg_metadata(self) -> Optional[QgsCoordinateReferenceSystem]:
+        """Read the study area CRS directly from the GeoPackage metadata tables.
+
+        Returns:
+            A valid QgsCoordinateReferenceSystem, or None if it could not be read.
+        """
         try:
             from osgeo import ogr
 
@@ -210,6 +256,7 @@ class WorkflowBase(QObject):
                     "JOIN gpkg_spatial_ref_sys srs ON gc.srs_id = srs.srs_id "
                     "WHERE gc.table_name = 'study_area_bboxes' LIMIT 1"
                 )
+                crs = None
                 if result:
                     feat = result.GetNextFeature()
                     if feat:
@@ -224,35 +271,21 @@ class WorkflowBase(QObject):
                             )
                     ds.ReleaseResultSet(result)
                 ds = None
+                if crs is not None and crs.isValid():
+                    return crs
         except Exception as e:
             log_message(
                 f"Failed to read CRS from gpkg metadata: {e}",
                 tag="GeoE3",
                 level=Qgis.Critical,
             )
-
-        if not crs.isValid():
-            integrity_status = self._quick_check_gpkg()
-            raise ValueError(
-                f"Could not determine CRS for study area from {self.gpkg_path}. "
-                f"GeoPackage integrity check: {integrity_status}."
-            )
-        return crs
+        return None
 
     def _quick_check_gpkg(self) -> str:
         """Run SQLite quick_check on the study area GeoPackage."""
-        try:
-            connection = sqlite3.connect(self.gpkg_path)
-            try:
-                cursor = connection.cursor()
-                cursor.execute("PRAGMA quick_check;")
-                row = cursor.fetchone()
-                result = row[0] if row else "unknown"
-                return str(result)
-            finally:
-                connection.close()
-        except Exception as error:
-            return f"failed ({error})"
+        from geest.core.gpkg_doctor import quick_check
+
+        return quick_check(self.gpkg_path)
 
     def _check_ghsl_layer_exists(self) -> bool:
         """Check if the GHSL settlements layer exists in the study area GeoPackage.

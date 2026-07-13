@@ -19,7 +19,6 @@ from qgis.core import Qgis, QgsFeedback, QgsVectorLayer
 
 from geest.utilities import log_message
 
-
 SQLITE_WRITE_BUSY_TIMEOUT_MS = 10000
 SQLITE_WRITE_MAX_RETRIES = 3
 SQLITE_WRITE_RETRY_DELAY_SECONDS = 0.2
@@ -74,13 +73,13 @@ def _checkpoint_wal(ds) -> None:
     metadata (including empty CRS).  A TRUNCATE checkpoint flushes all WAL
     content back into the main database file and removes the WAL/SHM files,
     ensuring subsequent readers see the full, up-to-date database.
+
+    Delegates to gpkg_doctor so every checkpoint in the process shares one
+    lock (two connections must never interleave checkpoints on one file).
     """
-    if ds is None:
-        return
-    try:
-        ds.ExecuteSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:  # nosec B110 – non-fatal; the close will still flush
-        pass
+    from geest.core.gpkg_doctor import checkpoint_dataset
+
+    checkpoint_dataset(ds)
 
 
 def _ensure_column_exists(gpkg_path: str, column_name: str) -> bool:

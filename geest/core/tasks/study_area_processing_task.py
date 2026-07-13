@@ -14,6 +14,7 @@ import traceback
 # GDAL / OGR / OSR imports
 from osgeo import gdal, ogr, osr
 from qgis.core import (
+    Qgis,
     QgsFeedback,
     QgsProject,
     QgsRectangle,
@@ -391,7 +392,10 @@ class UnifiedWriterThread(QThread):
             if self.ds:
                 try:
                     self.ds.FlushCache()
-                    self.ds.ExecuteSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+                    # Serialised process-wide via gpkg_doctor's checkpoint lock.
+                    from geest.core.gpkg_doctor import checkpoint_dataset
+
+                    checkpoint_dataset(self.ds)
                 except Exception as e:
                     log_message(f"UnifiedWriter: Error flushing on cleanup: {e}", level="WARNING")
                 self.ds = None
@@ -559,7 +563,10 @@ class UnifiedWriterThread(QThread):
             try:
                 for op in layer_ops:
                     feature = ogr.Feature(feat_defn)
-                    feature.SetField("area_name", op.data["area_name"])
+                    # Legacy layers (e.g. chunks created by pre-2.1 plugin
+                    # versions) may lack the standard area_name field.
+                    if feat_defn.GetFieldIndex("area_name") >= 0:
+                        feature.SetField("area_name", op.data["area_name"])
 
                     # Set extra fields (e.g., intersects_ghsl, geom_area)
                     for field_name, field_value in op.data.get("extra_fields", {}).items():
@@ -1538,6 +1545,10 @@ class StudyAreaProcessingTask(QgsTask):
             # 5) Create a VRT of all generated raster masks
             self.create_raster_vrt()
 
+            # 6) Verify the GeoPackage survived all concurrent writes intact,
+            #    self-healing it in place if anything is amiss.
+            self._verify_gpkg_health()
+
         except Exception as e:
             reason, detail = self._friendly_error_message(e)
             self._set_termination_reason(reason=reason, detail=detail)
@@ -1554,6 +1565,24 @@ class StudyAreaProcessingTask(QgsTask):
             self._cleanup_gdal_resources()
 
         return True
+
+    def _verify_gpkg_health(self) -> None:
+        """Check the study area GeoPackage after processing, healing in place.
+
+        Raises:
+            RuntimeError: If the GeoPackage is corrupt and could not be healed.
+        """
+        from geest.core.gpkg_doctor import heal_geopackage
+
+        report = heal_geopackage(self.gpkg_path, log=lambda message: log_message(message, tag="GeoE3"))
+        if report.was_corrupt:
+            log_message(
+                f"Study area GeoPackage required self-healing: {report.summary()}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+        if not report.healthy:
+            raise RuntimeError(f"Study area GeoPackage is corrupt and could not be self-healed: {report.summary()}")
 
     def _set_termination_reason(self, reason: str, detail: str = "") -> None:
         """Store safe, user-facing termination text for the UI."""
@@ -1619,10 +1648,16 @@ class StudyAreaProcessingTask(QgsTask):
         return self.writer_thread is not None and self.writer_thread.isRunning()
 
     def _prepare_study_area_layers(self) -> None:
-        """Create required study area layers before background writes begin."""
+        """Create required study area layers before background writes begin.
+
+        Every layer that will be written during processing is created here,
+        up front, so no schema DDL (and its rtree trigger creation) ever runs
+        while the unified writer holds its persistent connection.
+        """
         self.create_layer_if_not_exists("study_area_bboxes")
         self.create_layer_if_not_exists("study_area_polygons")
         self.create_layer_if_not_exists("study_area_clip_polygons")
+        self.create_layer_if_not_exists("chunks")
         self.create_grid_layer_if_not_exists("study_area_grid")
 
     def _set_sqlite_write_safety_options(self) -> None:
@@ -1636,8 +1671,13 @@ class StudyAreaProcessingTask(QgsTask):
 
         gdal.SetConfigOption("OGR_SQLITE_JOURNAL", "WAL")
         gdal.SetConfigOption("OGR_SQLITE_SYNCHRONOUS", "NORMAL")
-        gdal.SetConfigOption("SQLITE_USE_OGR_VFS", "YES")
-        log_message("Configured safer GeoPackage write settings (WAL/NORMAL)")
+        # SQLITE_USE_OGR_VFS must stay OFF: the OGR VSI layer does not
+        # implement SQLite file locking, so with it enabled concurrent write
+        # connections (unified writer + chunk/layer creation) can interleave
+        # page writes unprotected and corrupt the GeoPackage (duplicated
+        # sqlite_master pages, "trigger ... already exists" schema errors).
+        gdal.SetConfigOption("SQLITE_USE_OGR_VFS", "NO")
+        log_message("Configured safer GeoPackage write settings (WAL/NORMAL, OGR VFS off)")
 
     def _restore_sqlite_write_safety_options(self) -> None:
         """Restore GDAL SQLite options captured before task execution."""
@@ -2258,6 +2298,10 @@ class StudyAreaProcessingTask(QgsTask):
                 area_field = ogr.FieldDefn("geom_area", ogr.OFTReal)
                 layer.CreateField(area_field)
 
+            if layer_name == "chunks":
+                layer.CreateField(ogr.FieldDefn("index", ogr.OFTInteger))
+                layer.CreateField(ogr.FieldDefn("type", ogr.OFTString))
+
             # Flush to ensure writer thread can see this layer
             ds.FlushCache()
             ds = None
@@ -2416,27 +2460,10 @@ class StudyAreaProcessingTask(QgsTask):
             geometry=geom.ExportToWkb(),
         )
 
-        max_retries = 5
-        retry_delay = 0.5
-        for attempt in range(max_retries):
-            try:
-                self.gpkg_lock.lock()
-                try:
-                    chunker.write_chunks_to_gpkg(self.gpkg_path)
-                finally:
-                    self.gpkg_lock.unlock()
-                break
-            except RuntimeError as e:
-                if "database is locked" in str(e) and attempt < max_retries - 1:
-                    log_message(
-                        f"Chunk metadata write locked, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})",
-                        level="WARNING",
-                    )
-                    time.sleep(retry_delay)
-                    retry_delay = min(retry_delay * 2, 5.0)
-                else:
-                    raise
-
+        # Chunk tiles are queued through the unified writer below (single
+        # writer connection — no second write connection racing it, so no
+        # lock/retry dance). The layer itself is pre-created before any
+        # worker starts (_prepare_study_area_layers).
         log_message(f"Creating grid for extents: xmin {xmin}, xmax {xmax}, ymin {ymin}, ymax {ymax}")
 
         feedback = QgsFeedback()
@@ -2447,6 +2474,18 @@ class StudyAreaProcessingTask(QgsTask):
 
         chunks_to_process = []
         for counter, chunk in enumerate(chunker.chunks(), start=1):
+            # Queue the chunk tile via the unified writer (cloned so the
+            # writer thread never shares a live geometry with the chunk
+            # processing workers).
+            self.write_queue.put(
+                GpkgOperation.write_geometry(
+                    "chunks",
+                    chunk["geometry"].Clone(),
+                    normalized_name,
+                    index=chunk["index"],
+                    type=chunk["type"],
+                )
+            )
             if chunk["type"] != "undefined":
                 chunks_to_process.append(chunk)
             else:

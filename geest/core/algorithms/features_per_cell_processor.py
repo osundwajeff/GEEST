@@ -277,10 +277,10 @@ def assign_values_to_grid(grid_layer: QgsVectorLayer, feedback: QgsFeedback = No
             END
         """
         ds.ExecuteSQL(sql)
-        try:
-            ds.ExecuteSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-        except Exception:  # nosec B110 – non-fatal; the close will still flush
-            pass
+        # Serialised process-wide via gpkg_doctor's checkpoint lock.
+        from geest.core.gpkg_doctor import checkpoint_dataset
+
+        checkpoint_dataset(ds)
         ds = None  # Close the datasource
 
         log_message(
