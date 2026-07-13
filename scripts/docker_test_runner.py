@@ -49,8 +49,11 @@ print(
     f"GEOE3-SUITE: verdict={verdict} run={result.testsRun} "
     f"failures={len(result.failures)} "
     f"errors={len(result.errors)} "
-    f"skipped={len(result.skipped)}"
+    f"skipped={len(result.skipped)} "
+    f"unexpected_successes={len(result.unexpectedSuccesses)}"
 )
+for test in result.unexpectedSuccesses:
+    print(f"UNEXPECTED SUCCESS (stale expectedFailure marker?): {test.id()}")
 sys.stdout.flush()
 sys.stderr.flush()
 # QGIS python may segfault during interpreter teardown (notably on 4.x
