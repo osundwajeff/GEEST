@@ -81,7 +81,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
         # Scrollable body
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll_widget = QWidget()
         layout = QVBoxLayout(scroll_widget)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -115,14 +115,14 @@ class DimensionAggregationDialog(CustomBaseDialog):
         self.table.setRowCount(len(self.guids))
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["Factor", "Weight 0-1", "Use", "", "Guid"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         # Adjust column widths
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Factor column expands
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)  # Weight 0-1 column fixed
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)  # Use column fixed
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)  # Reset column fixed
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)  # Guid column fixed
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Factor column expands
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)  # Weight 0-1 column fixed
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # Use column fixed
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # Reset column fixed
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)  # Guid column fixed
 
         # Set fixed widths for the last three columns
         self.table.setColumnWidth(1, 100)  # Weight 0-1 column width
@@ -138,6 +138,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
             dimension_weighting = float(attributes.get("dimension_weighting", 0.0))
             default_dimension_weighting = attributes.get("default_dimension_weighting", 0)
             is_factor_enabled = item.is_enabled()
+            is_included_in_analysis = item.getStatus() != "Excluded from analysis" and dimension_weighting > 0
 
             name_item = QTableWidgetItem(factor_id)
             name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -154,7 +155,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
             self.weightings[guid] = weighting_item
 
             # Use checkboxes - pass the is_enabled state
-            checkbox_widget = self.create_checkbox_widget(row, dimension_weighting, is_factor_enabled)
+            checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis, is_factor_enabled)
             self.table.setCellWidget(row, 2, checkbox_widget)
 
             # Reset button
@@ -183,6 +184,9 @@ class DimensionAggregationDialog(CustomBaseDialog):
                 weighting_item.setEnabled(False)
                 reset_button.setEnabled(False)
                 guid_item.setForeground(QColor(Qt.GlobalColor.gray))
+            else:
+                initial_state = Qt.CheckState.Checked if self.is_checkbox_checked(row) else Qt.CheckState.Unchecked
+                self.toggle_row_widgets(row, initial_state)
 
         layout.addWidget(self.table)
 
@@ -209,18 +213,18 @@ class DimensionAggregationDialog(CustomBaseDialog):
         layout.addLayout(help_layout)
 
         # Button box — outside the scroll area so it remains always visible
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         auto_calculate_button = QPushButton("Balance Weights")
-        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ActionRole)
+        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ButtonRole.ActionRole)
         self.button_box.accepted.connect(self.accept_changes)
         self.button_box.rejected.connect(self.reject)
         auto_calculate_button.clicked.connect(self.auto_calculate_weightings)
 
         toggle_guid_button = QPushButton("Show GUIDs")
-        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ActionRole)
+        self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ButtonRole.ActionRole)
         verbose_mode = setting(key="verbose_mode", default=0)
         if verbose_mode:
-            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ActionRole)
+            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ButtonRole.ActionRole)
         toggle_guid_button.clicked.connect(self.toggle_guid_column)
         self.guid_column_visible = False  # Track GUID column visibility
         self.table.setColumnHidden(4, not self.guid_column_visible)  # Hide GUID column by default
@@ -246,7 +250,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
         if geometry:
             try:
                 self.restoreGeometry(geometry)
-                screen = QApplication.desktop().screenGeometry()
+                screen = QApplication.primaryScreen().geometry()
                 if self.width() > int(screen.width() * 0.85) or self.height() > int(screen.height() * 0.85):
                     settings.remove("DimensionAggregationDialog/geometry_v2")
                 else:
@@ -254,7 +258,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
             except Exception:  # nosec B110
                 pass
         # Sensible default: cap at 900px wide, 80% screen height
-        screen = QApplication.desktop().screenGeometry()
+        screen = QApplication.primaryScreen().geometry()
         width = min(900, int(screen.width() * 0.65))
         height = min(int(screen.height() * 0.80), 750)
         self.resize(width, height)
@@ -275,12 +279,12 @@ class DimensionAggregationDialog(CustomBaseDialog):
         self.guid_column_visible = not self.guid_column_visible
         self.table.setColumnHidden(4, not self.guid_column_visible)
 
-    def create_checkbox_widget(self, row: int, dimension_weighting: float, is_enabled: bool = True) -> QWidget:
+    def create_checkbox_widget(self, row: int, is_checked: bool, is_enabled: bool = True) -> QWidget:
         """
         Create a QWidget containing a QCheckBox for a specific row and center it.
         """
         checkbox = QCheckBox()
-        if dimension_weighting > 0 and is_enabled:
+        if is_checked and is_enabled:
             checkbox.setChecked(True)
         else:
             checkbox.setChecked(False)
@@ -353,7 +357,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
         """
         log_message(f"Checking checkbox state for row: {row}")
         checkbox = self.get_checkbox_in_row(row)  # Assuming the checkbox is in column 2
-        return checkbox.isChecked()
+        return checkbox.isChecked() if checkbox else False
 
     def get_checkbox_in_row(self, row: int) -> QCheckBox:
         """
@@ -409,10 +413,33 @@ class DimensionAggregationDialog(CustomBaseDialog):
                 spin_box.setStyleSheet("color: red;")  # Set font color to red if invalid
 
         # Enable or disable the OK button based on validation result
-        self.button_box.button(QDialogButtonBox.Ok).setEnabled(valid_sum)
+        if hasattr(self, "button_box"):
+            ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
+            if ok_button:
+                ok_button.setEnabled(valid_sum)
 
     def accept_changes(self):
         """Handle the OK button by applying changes and closing the dialog."""
+        self.save_use_state_to_model()
         self.saveWeightingsToModel()  # Assign weightings when changes are accepted
         self.save_geometry()
         self.accept()
+
+    def save_use_state_to_model(self) -> None:
+        """Persist the Use checkbox state to factor dimension_weighting values."""
+        for row, factor_guid in enumerate(self.guids):
+            factor_item = self.tree_item.getItemByGuid(factor_guid)
+            if factor_item is None or not factor_item.is_enabled():
+                continue
+
+            checkbox_checked = self.is_checkbox_checked(row)
+            spin_box = self.weightings.get(factor_guid)
+            if checkbox_checked:
+                if spin_box and float(spin_box.value() or 0.0) == 0.0:
+                    default_weighting = float(factor_item.attribute("default_dimension_weighting", 1.0) or 1.0)
+                    spin_box.setValue(default_weighting)
+                    factor_item.setAttribute("dimension_weighting", default_weighting)
+            else:
+                if spin_box:
+                    spin_box.setValue(0.0)
+                factor_item.setAttribute("dimension_weighting", 0.0)

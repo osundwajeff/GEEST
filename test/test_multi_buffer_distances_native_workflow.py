@@ -84,6 +84,32 @@ class TestMultiBufferDistancesNativeWorkflow(unittest.TestCase):
         )
         self.workflow.execute()
 
+    def test_run_no_isochrones_uses_zero_score_fallback(self):
+        """No isochrones (e.g. no points reachable from the road network)
+        should produce a neutral 0-scored raster rather than an error.
+
+        Regression test for issue #381.
+        """
+        workflow = MultiBufferDistancesNativeWorkflow(
+            item=self.indicator_item,
+            cell_size_m=10.0,
+            analysis_scale="local",
+            feedback=self.feedback,
+            context=self.context,
+            working_directory=self.working_directory,
+        )
+        # Simulate network analysis completing without producing isochrones
+        workflow.create_isochrones = lambda **kwargs: None
+        result = workflow.execute()
+        self.assertTrue(result)
+        self.assertEqual(
+            self.indicator_item.attribute("result"),
+            f"{workflow.workflow_name} Workflow Completed",
+        )
+        result_file = self.indicator_item.attribute("result_file")
+        self.assertTrue(result_file)
+        self.assertTrue(os.path.exists(result_file))
+
 
 if __name__ == "__main__":
     unittest.main()

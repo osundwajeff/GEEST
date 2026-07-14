@@ -6,10 +6,10 @@ import json
 import os
 import traceback
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from osgeo import ogr, osr
-from qgis.core import QgsFeedback, QgsTask
+from qgis.core import Qgis, QgsFeedback, QgsTask
 from qgis.PyQt.QtCore import pyqtSignal
 
 from geest.core.s2s_client import S2SClient
@@ -270,7 +270,15 @@ class S2SDownloaderTask(QgsTask):
                 if output_field_types[field_name] == ogr.OFTReal:
                     field_defn.SetWidth(32)
                     field_defn.SetPrecision(12)
-                layer.CreateField(field_defn)
+                result = layer.CreateField(field_defn)
+                if result != 0:
+                    raise RuntimeError(
+                        f"Failed to create field '{field_name}' in S2S output layer (OGR error {result})"
+                    )
+                log_message(
+                    f"Created S2S field: {field_name} ({ogr.GetFieldTypeName(output_field_types[field_name])})",
+                    level=Qgis.Info,
+                )
 
             layer_defn = layer.GetLayerDefn()
             total = len(rows)
@@ -310,6 +318,21 @@ class S2SDownloaderTask(QgsTask):
             dataset = None
 
         os.replace(self._temp_output_path, self.output_path)
+        # Log final schema for debugging
+        try:
+            verify_ds = ogr.Open(self.output_path, 0)
+            if verify_ds:
+                verify_layer = verify_ds.GetLayerByName(self.layer_name)
+                if verify_layer:
+                    vld = verify_layer.GetLayerDefn()
+                    schema = [vld.GetFieldDefn(i).GetNameRef() for i in range(vld.GetFieldCount())]
+                    log_message(
+                        f"S2S GPKG schema written: {self.output_path} layer={self.layer_name} fields={schema}",
+                        level=Qgis.Info,
+                    )
+                verify_ds = None
+        except Exception:
+            pass
         self._temp_output_path = ""
 
     def _append_rows_to_gpkg(self, rows: List[Dict[str, Any]]) -> None:

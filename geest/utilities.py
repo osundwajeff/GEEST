@@ -37,7 +37,7 @@ from qgis.core import (
 )
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import QRect, QSettings, QUrl
-from qgis.PyQt.QtGui import QPixmap
+from qgis.PyQt.QtGui import QPalette, QPixmap
 from qgis.PyQt.QtWidgets import QApplication
 
 from geest.core.settings import setting
@@ -501,8 +501,9 @@ def is_qgis_dark_theme_active() -> bool:
 
     # Check the application palette for dark colors
     palette = app.palette()
-    window_color = palette.color(palette.Window)
-    text_color = palette.color(palette.WindowText)
+    # Scoped enum form works on both PyQt5 and PyQt6 (QGIS 3.x and 4.x)
+    window_color = palette.color(QPalette.ColorRole.Window)
+    text_color = palette.color(QPalette.ColorRole.WindowText)
     if window_color.lightness() < text_color.lightness():
         return True
 

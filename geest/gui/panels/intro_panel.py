@@ -5,9 +5,9 @@ This module contains functionality for intro panel.
 """
 
 from qgis.core import Qgis  # noqa F401
-from qgis.PyQt.QtWidgets import QWidget
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtGui import QFont
+from qgis.PyQt.QtWidgets import QWidget
 
 from geest.gui.widgets import CustomBannerLabel
 from geest.utilities import (
@@ -65,10 +65,10 @@ class IntroPanel(FORM_CLASS, QWidget):
     def set_font_size(self):
         """⚙️ Set font size."""
         panel_width = self.intro_label.rect().width()
-        title_size = int(linear_interpolation(panel_width, 16, 20, 400, 800))
-        content_size = int(linear_interpolation(panel_width, 11, 15, 400, 800))
+        title_size = int(linear_interpolation(panel_width, 14, 18, 400, 600))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
 
         title_font = QFont("Arial", title_size)
-        title_font.setWeight(QFont.DemiBold)
+        title_font.setWeight(QFont.Weight.DemiBold)
         self.label_2.setFont(title_font)
         self.intro_label.setFont(QFont("Arial", content_size))

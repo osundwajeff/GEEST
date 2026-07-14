@@ -30,7 +30,7 @@ from geest.core.grid_column_utils import (
 )
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class ClassifiedPolygonWorkflow(WorkflowBase):
@@ -75,7 +75,7 @@ class ClassifiedPolygonWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                return False
+                raise WorkflowNotConfiguredError("No polygon layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_path, "features_layer", "ogr")
         self.selected_field = self.attributes.get("classify_polygon_into_classes_selected_field", "")
         self.workflow_name = "classified_polygon"

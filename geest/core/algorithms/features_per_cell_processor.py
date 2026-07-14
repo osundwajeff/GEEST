@@ -83,7 +83,7 @@ def select_grid_cells_and_count_features(
             if feature_geom.isEmpty():
                 continue
 
-            if feature_geom.type() == QgsWkbTypes.PointGeometry:
+            if feature_geom.type() == QgsWkbTypes.GeometryType.PointGeometry:
                 # For point geometries, use bounding box to find intersecting grid cells
                 intersecting_ids = grid_index.intersects(feature_geom.boundingBox())
             else:
@@ -277,10 +277,10 @@ def assign_values_to_grid(grid_layer: QgsVectorLayer, feedback: QgsFeedback = No
             END
         """
         ds.ExecuteSQL(sql)
-        try:
-            ds.ExecuteSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-        except Exception:  # nosec B110 – non-fatal; the close will still flush
-            pass
+        # Serialised process-wide via gpkg_doctor's checkpoint lock.
+        from geest.core.gpkg_doctor import checkpoint_dataset
+
+        checkpoint_dataset(ds)
         ds = None  # Close the datasource
 
         log_message(
@@ -439,7 +439,7 @@ def select_grid_cells_and_assign_transport_score(
         # Instead of one huge bbox for the whole line, query smaller bboxes per segment
         # This dramatically reduces false positives for long diagonal roads
         abstract_geom = feature_geom.constGet()
-        if feature_geom.type() == QgsWkbTypes.LineGeometry and abstract_geom is not None:
+        if feature_geom.type() == QgsWkbTypes.GeometryType.LineGeometry and abstract_geom is not None:
             # Get vertices and query each segment's bbox
             vertices = list(abstract_geom.vertices())
             candidate_set = set()

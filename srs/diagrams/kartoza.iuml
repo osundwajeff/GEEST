@@ -1,0 +1,70 @@
+' Kartoza brand skin — flat, one palette
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Lato
+skinparam defaultFontColor #383939
+skinparam defaultFontSize 13
+skinparam titleFontSize 16
+skinparam titleFontStyle bold
+skinparam ArrowColor #383939
+skinparam ArrowFontColor #676869
+skinparam ArrowFontSize 11
+
+skinparam actor {
+  BackgroundColor #F5F5F2
+  BorderColor #383939
+}
+skinparam usecase {
+  BackgroundColor #EAF3FA
+  BorderColor #54A2CC
+}
+skinparam rectangle {
+  BackgroundColor #F5F5F2
+  BorderColor #8A8B8B
+  roundCorner 8
+}
+skinparam component {
+  BackgroundColor #EAF3FA
+  BorderColor #54A2CC
+}
+skinparam database {
+  BackgroundColor #FCF3E0
+  BorderColor #EEB348
+}
+skinparam class {
+  BackgroundColor #F5F5F2
+  BorderColor #8A8B8B
+  HeaderBackgroundColor #D1D1D1
+  AttributeFontColor #383939
+  AttributeFontSize 11
+}
+skinparam state {
+  BackgroundColor #EAF3FA
+  BorderColor #54A2CC
+}
+skinparam activity {
+  BackgroundColor #EAF3FA
+  BorderColor #54A2CC
+  DiamondBackgroundColor #FCF3E0
+  DiamondBorderColor #EEB348
+  BarColor #383939
+}
+skinparam sequence {
+  ParticipantBackgroundColor #F5F5F2
+  ParticipantBorderColor #8A8B8B
+  LifeLineBorderColor #8A8B8B
+  GroupBackgroundColor #F5F5F2
+  GroupBorderColor #D1D1D1
+}
+skinparam note {
+  BackgroundColor #FCF3E0
+  BorderColor #EEB348
+}
+skinparam partition {
+  BackgroundColor #FFFFFF
+  BorderColor #D1D1D1
+}
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #8A8B8B
+}

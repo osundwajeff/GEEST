@@ -41,7 +41,7 @@ class ToggleSwitch(QWidget):
             painter.setBrush(QColor("#fffdcf"))  # Inactive state color (gray)
 
         # Draw the rounded rectangle as the background
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.drawRoundedRect(rect, rect.height() // 4, rect.height() // 4)
 
         # Draw the circle (slider knob)

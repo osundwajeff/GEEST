@@ -130,6 +130,27 @@ The `admin.py` script provides various commands for managing the plugin, such as
 
 ## Running Tests ✅
 
+### Quick: run the suite in the official QGIS docker images
+
+The fastest way to run the full test suite locally is inside the official
+`qgis/qgis` docker images (the same images CI uses). This works even where
+the nix dev shell cannot import the QGIS python bindings:
+
+```bash
+nix run .#test-qgis3   # QGIS 3.34 LTR (Qt5/PyQt5)
+nix run .#test-qgis4   # QGIS 4.x master (Qt6/PyQt6)
+nix run .#test-qgis    # both, sequentially
+```
+
+These wrap `scripts/run-docker-tests.sh` (which you can also call directly
+with `3`, `4`, or `all`). Notes:
+
+- `test_init` is skipped in this harness — it needs the packaged plugin
+  layout produced by `python admin.py build --tests` (CI does this).
+- The runner restores `geest/resources/ghsl/ghs-mod-2023-tile-scheme.gpkg`
+  after the run if the ghsl tests mutated it.
+- In Neovim these are on the project menu under `<leader>pt` (Tests).
+
 ### Environment Variables
 
 The test system requires the following environment variables:

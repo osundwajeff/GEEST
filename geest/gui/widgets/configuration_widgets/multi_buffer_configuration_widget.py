@@ -141,7 +141,7 @@ class MultiBufferConfigurationWidget(BaseConfigurationWidget):
             # Display tables
             self.mapping_table_label = QLabel()
             self.mapping_table_label.setWordWrap(True)
-            self.mapping_table_label.setTextFormat(Qt.RichText)
+            self.mapping_table_label.setTextFormat(Qt.TextFormat.RichText)
             self.mapping_table_label.setText(html)
             self.internal_layout.addWidget(self.mapping_table_label)
 

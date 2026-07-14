@@ -1,0 +1,61 @@
+@startuml
+!include kartoza.iuml
+top to bottom direction
+title study_area.gpkg — data structure
+class study_area_bbox <<layer>> {
+  fid : INTEGER pk
+  geom : POLYGON
+  area_name : TEXT
+}
+class study_area_bboxes <<layer>> {
+  fid : INTEGER pk
+  geom : POLYGON
+  area_name : TEXT
+}
+class study_area_polygons <<layer>> {
+  fid : INTEGER pk
+  geom : POLYGON
+  area_name : TEXT
+  intersects_ghsl : INT
+  geom_area : REAL
+}
+class study_area_clip_polygons <<layer>> {
+  fid : INTEGER pk
+  geom : POLYGON
+  area_name : TEXT
+}
+class study_area_grid <<layer>> {
+  fid : INTEGER pk
+  geom : POLYGON
+  grid_id : INT
+  area_name : TEXT
+  <indicator columns> : REAL ×18
+  fac_* : REAL ×16
+  dim_* : REAL ×3
+  geoe3 : REAL
+  geoe3_by_population : REAL
+  opportunities_mask : REAL
+}
+class chunks <<layer>> {
+  fid : INTEGER pk
+  geom : POLYGON
+  index : INT
+  type : TEXT
+}
+class ghsl_settlements <<layer>> {
+  fid : INTEGER pk
+  geometry : MULTIPOLYGON
+  pixel_value : INT
+}
+class study_area_creation_status <<table>> {
+  fid : INTEGER pk
+  area_name : TEXT
+  timestamp_start / _end : DATETIME
+  geometry|clip|grid|mask_processed : INT
+  *_duration_secs : REAL
+}
+study_area_polygons "1" -- "1..*" study_area_grid : cells clipped to
+study_area_polygons "1" -- "0..*" chunks : tiled into
+study_area_polygons "1" -- "1" study_area_creation_status : tracked by
+study_area_grid -- ghsl_settlements : masked by
+@enduml

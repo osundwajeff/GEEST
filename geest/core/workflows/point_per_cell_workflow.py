@@ -93,6 +93,7 @@ class PointPerCellWorkflow(WorkflowBase):
             raise Exception(error)
         self.feedback.setProgress(1.0)
         self.workflow_name = "point_per_cell"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

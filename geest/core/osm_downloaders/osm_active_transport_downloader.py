@@ -125,7 +125,7 @@ class OSMActiveTransportDownloader(OSMDataDownloaderBase):
   way["junction"="circular"]({{bbox}});
 );
 (._;>;);
-out geom;"""
+out body;"""
 
         self.set_osm_query(osm_query)
         self.submit_query()

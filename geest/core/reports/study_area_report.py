@@ -243,7 +243,7 @@ class StudyAreaReport(BaseReport):
             info_label.setText(info_text)
             info_label.setFont(QFont("Arial", 12))
             info_label.adjustSizeToText()
-            info_label.attemptMove(QgsLayoutPoint(10, 60, QgsUnitTypes.LayoutMillimeters), page=current_page)
+            info_label.attemptMove(QgsLayoutPoint(10, 60, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=current_page)
             self.layout.addLayoutItem(info_label)
 
     def create_layout(self):
@@ -271,7 +271,7 @@ class StudyAreaReport(BaseReport):
         summary_label.setText(summary_text)
         summary_label.setFont(QFont("Arial", 12))
         summary_label.adjustSizeToText()
-        summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutMillimeters), page=0)
+        summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=0)
         self.layout.addLayoutItem(summary_label)
 
         # Compute and add summary statistics for each layer on separate pages
@@ -295,7 +295,7 @@ class StudyAreaReport(BaseReport):
             summary_label.adjustSizeToText()
             # Position the label on the current page
             summary_label.attemptMove(
-                QgsLayoutPoint(120, 60, QgsUnitTypes.LayoutMillimeters),
+                QgsLayoutPoint(120, 60, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
                 page=current_page,
             )
             self.layout.addLayoutItem(summary_label)

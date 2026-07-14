@@ -65,6 +65,7 @@ class MultiBufferDistancesORSWorkflow(WorkflowBase):
             item, cell_size_m, analysis_scale, feedback, context, working_directory
         )  # ⭐️ Item is a reference - whatever you change in this item will directly update the tree
         self.workflow_name = "use_multi_buffer_point"
+        self.supports_empty_features_fallback = True
         self.distances = self.attributes.get("multi_buffer_travel_distances", None)
         if not self.distances:
             factor_id = None

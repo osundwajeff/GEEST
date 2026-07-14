@@ -1,0 +1,32 @@
+@startsalt
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Lato
+skinparam defaultFontColor #383939
+title Working directory — output organisation
+{
+{T
++ <b><working_folder>/</b>
+++ model.json — analysis configuration & results ledger
+++ study_area_report.pdf  ·  study_area_report.qpt
+++ <b>study_area/</b>
++++ study_area.gpkg — grid, areas, chunks, GHSL, status
++++ combined_mask.vrt  ·  cod.tif
++++ osm_<theme>.gpkg ×9  ·  ookla_*.gpkg
++++ active_transport_network.gpkg
+++ <b>contextual/</b>   (same pattern: accessibility/, place_characterization/)
++++ Contextual_score_combined.vrt + .qml
++++ dim_contextual_masked_<n>.tif
++++ <b><factor>/</b>  e.g. financial_inclusion/
+++++ fac_<factor>_masked_<n>.tif
+++++ <factor>_combined.vrt + .qml
+++++ <b><indicator>/</b>  e.g. entrepreneurship_index/
++++++ <indicator>_masked_<n>.tif
++++++ <OUTPUT>_combined.vrt + .qml
++++++ error.txt (only on failure)
+++ <b>geoe3_score/</b> — geoe3_combined.vrt (0–5)
+++ <b>geoe3_by_population_score/</b> — 15-class bivariate
+++ <b>geoe3_score_ghsl_masked/</b> — masked variants
+++ <b>subnational_aggregation/</b> — subnational_*.gpkg + .qml
+}
+}
+@endsalt

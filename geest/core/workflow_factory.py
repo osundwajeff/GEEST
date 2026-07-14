@@ -132,8 +132,8 @@ class WorkflowFactory:
             else:
                 raise ValueError(f"Unknown Analysis Mode: {analysis_mode}")
 
-        except Exception as e:
-            log_message(f"Error creating workflow: {e}", level=Qgis.Critical)
+        except ValueError as e:
+            log_message(f"Unknown analysis mode: {e}", level=Qgis.Critical)
             import traceback
 
             log_message(traceback.format_exc(), level=Qgis.Critical)

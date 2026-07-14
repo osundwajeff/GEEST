@@ -112,10 +112,46 @@ class CanvasOverlayFilter(QObject):
         Returns:
             False to let the event propagate normally.
         """
-        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             QSettings().setValue("geoe3/overlay_label", "")
             QSettings().setValue("geoe3/pie_data", "")
         return False
+
+
+def _dock_area_to_int(area):
+    """Portable Qt enum → int.
+
+    PyQt5 sip enums support ``int(enum)``; PyQt6 maps DockWidgetArea to a
+    pure ``enum.Flag`` where ``int(enum)`` raises and ``.value`` must be
+    used instead.
+    """
+    try:
+        return int(area)
+    except TypeError:
+        return int(area.value)
+
+
+def _to_dock_widget_area(value):
+    """Coerce a QSettings value to a valid Qt.DockWidgetArea.
+
+    PyQt6 no longer auto-converts ints to Qt enums, and the dock area is
+    persisted in QSettings as an int. Anything invalid (including
+    NoDockWidgetArea) falls back to the right dock area.
+    """
+    valid_areas = (
+        Qt.DockWidgetArea.LeftDockWidgetArea,
+        Qt.DockWidgetArea.RightDockWidgetArea,
+        Qt.DockWidgetArea.TopDockWidgetArea,
+        Qt.DockWidgetArea.BottomDockWidgetArea,
+    )
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return Qt.DockWidgetArea.RightDockWidgetArea
+    for area in valid_areas:
+        if value == _dock_area_to_int(area):
+            return area
+    return Qt.DockWidgetArea.RightDockWidgetArea
 
 
 def classFactory(iface):  # pylint: disable=missing-function-docstring
@@ -217,17 +253,52 @@ class GeoE3Plugin:
         log_message(f"Using test directory: {env_test_dir}")
         return env_test_dir
 
+    # objectNames of every toolbar action this plugin creates — used to
+    # sweep stale instances on load so reloads never stack duplicates.
+    _TOOLBAR_ACTION_NAMES = (
+        "GeoE3RunAction",
+        "GeoE3DebugAction",
+        "GeoE3TestsAction",
+        "GeoE3SingleTestAction",
+        "GeoE3ProfilerAction",
+        "GeoE3SaveProfileAction",
+    )
+
+    def _remove_stale_toolbar_actions(self):
+        """Remove toolbar actions leaked by a previous load of the plugin."""
+        for name in self._TOOLBAR_ACTION_NAMES:
+            for stale in self.iface.mainWindow().findChildren(QAction, name):
+                try:
+                    self.iface.removeToolBarIcon(stale)
+                    stale.deleteLater()
+                except Exception as error:  # nosec B110
+                    log_message(f"Could not remove stale action {name}: {error}")
+
     def initGui(self):  # pylint: disable=missing-function-docstring
         """
         Initialize the GUI elements of the plugin.
         """
+        # Sweep any toolbar actions a previous load leaked (a crashed
+        # initGui or an unload aborted by an exception) so plugin reloads
+        # never stack duplicate buttons.
+        self._remove_stale_toolbar_actions()
+
         icon = QIcon(resources_path("resources", "geoe3-main.svg"))
         self.run_action = QAction(icon, "GeoE3 Settings", self.iface.mainWindow())
+        self.run_action.setObjectName("GeoE3RunAction")
         self.run_action.triggered.connect(self.run)
         self.iface.addToolBarIcon(self.run_action)
         self.debug_running = False
         self.label_overlay = None  # for rendering info over the canvas
         self.pie_overlay = None  # for rendering pie chart over the canvas
+        # Remove any stale dock left behind by a previous load — a crashed
+        # initGui, or a plugin reload racing a queued deleteLater — so
+        # reloads never stack duplicate GeoE3DockWidget instances.
+        for stale_dock in self.iface.mainWindow().findChildren(QDockWidget, "GeoE3DockWidget"):
+            self.iface.removeDockWidget(stale_dock)
+            stale_dock.setParent(None)
+            stale_dock.deleteLater()
+
         # Create the dock widget
         self.dock_widget = GeoE3Dock(
             parent=self.iface.mainWindow(),
@@ -236,9 +307,9 @@ class GeoE3Plugin:
         # Dont remove this, needed for geometry restore....
         self.dock_widget.setObjectName("GeoE3DockWidget")  # Set a unique object name
         self.dock_widget.setFeatures(
-            QDockWidget.DockWidgetClosable  # noqa: W503
-            | QDockWidget.DockWidgetMovable  # noqa: W503
-            | QDockWidget.DockWidgetFloatable  # noqa: W503
+            QDockWidget.DockWidgetFeature.DockWidgetClosable  # noqa: W503
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable  # noqa: W503
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable  # noqa: W503
         )
         QgsProject.instance().readProject.connect(self.dock_widget.qgis_project_changed)
 
@@ -252,7 +323,9 @@ class GeoE3Plugin:
 
         # Check the dock area; default to right dock if not set
         settings = QSettings("ESMAP", "GeoE3")
-        dock_area = settings.value("GeoE3Dock/area", Qt.RightDockWidgetArea, type=int)
+        dock_area = _to_dock_widget_area(
+            settings.value("GeoE3Dock/area", _dock_area_to_int(Qt.DockWidgetArea.RightDockWidgetArea), type=int)
+        )
 
         # Add the dock widget to the restored or default dock area
         self.iface.addDockWidget(dock_area, self.dock_widget)
@@ -261,14 +334,14 @@ class GeoE3Plugin:
         existing_docks = [
             dw
             for dw in self.iface.mainWindow().findChildren(QDockWidget)
-            if self.iface.mainWindow().dockWidgetArea(dw) == dock_area
+            if self.iface.mainWindow().dockWidgetArea(dw) == dock_area and dw is not self.dock_widget
         ]
 
         # Tabify the new dock before the first found dock widget, if available
         if existing_docks:
             self.iface.mainWindow().tabifyDockWidget(existing_docks[0], self.dock_widget)
         else:
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_widget)
             legend_tab = self.iface.mainWindow().findChild(QApplication, "Legend")
             if legend_tab:
                 self.iface.mainWindow().tabifyDockWidget(legend_tab, self.dock_widget)
@@ -279,16 +352,19 @@ class GeoE3Plugin:
         if developer_mode:
             debug_icon = QIcon(resources_path("resources", "geoe3-debug.svg"))
             self.debug_action = QAction(debug_icon, "GEOE3 Debug Mode", self.iface.mainWindow())
+            self.debug_action.setObjectName("GeoE3DebugAction")
             self.debug_action.triggered.connect(self.debug)
             self.iface.addToolBarIcon(self.debug_action)
 
             tests_icon = QIcon(resources_path("resources", "run-tests.svg"))
             self.tests_action = QAction(tests_icon, "Run Tests", self.iface.mainWindow())
+            self.tests_action.setObjectName("GeoE3TestsAction")
             self.tests_action.triggered.connect(self.run_tests)
             self.iface.addToolBarIcon(self.tests_action)
 
             single_test_icon = QIcon(resources_path("resources", "run-single-test.svg"))
             self.single_test_action = QAction(single_test_icon, "Run Single Test", self.iface.mainWindow())
+            self.single_test_action.setObjectName("GeoE3SingleTestAction")
             self.single_test_action.triggered.connect(self.run_single_test)
             self.iface.addToolBarIcon(self.single_test_action)
 
@@ -494,7 +570,7 @@ for module_name in list(sys.modules.keys()):
                 return self.combo.currentText()
 
         dialog = TestPickerDialog(all_test_options, self.iface.mainWindow())
-        if not dialog.exec_():
+        if not dialog.exec():
             return  # Cancelled
 
         selected_test = dialog.selected_test()
@@ -559,9 +635,10 @@ for module_name in list(sys.modules.keys()):
             # Save geometry
             settings.setValue("GeoE3Dock/geometry", self.dock_widget.saveGeometry())
 
-            # Save dock area (left or right)
+            # Save dock area (left or right) as a plain int: PyQt6 enums do
+            # not round-trip through QSettings, ints do.
             dock_area = self.iface.mainWindow().dockWidgetArea(self.dock_widget)
-            settings.setValue("GeoE3Dock/area", dock_area)
+            settings.setValue("GeoE3Dock/area", _dock_area_to_int(dock_area))
 
     def restore_geometry(self) -> None:
         """
@@ -576,21 +653,23 @@ for module_name in list(sys.modules.keys()):
                 self.dock_widget.restoreGeometry(geometry)
 
             # Restore dock area (with fallback to old GeestDock key for backward compatibility)
-            dock_area = settings.value("GeoE3Dock/area", type=int) or settings.value("GeestDock/area", type=int)
-            if dock_area is not None:
-                self.iface.addDockWidget(dock_area, self.dock_widget)
+            stored_area = settings.value("GeoE3Dock/area", type=int) or settings.value("GeestDock/area", type=int)
+            if stored_area:
+                self.iface.addDockWidget(_to_dock_widget_area(stored_area), self.dock_widget)
 
     def setup_profiler_actions(self):
         """Set up cProfiler actions for developer mode."""
         # Create profiler start/stop action
         profile_icon = QIcon(resources_path("resources", "geoe3-start-profile.svg"))
         self.profiler_action = QAction(profile_icon, "Start Profiling", self.iface.mainWindow())
+        self.profiler_action.setObjectName("GeoE3ProfilerAction")
         self.profiler_action.triggered.connect(self.toggle_profiler)
         self.iface.addToolBarIcon(self.profiler_action)
 
         # Create save profile results action (initially disabled)
         save_icon = QIcon(resources_path("resources", "geoe3-save-profile.svg"))
         self.save_profile_action = QAction(save_icon, "Save Profile Results", self.iface.mainWindow())
+        self.save_profile_action.setObjectName("GeoE3SaveProfileAction")
         self.save_profile_action.triggered.connect(self.save_profile_results)
         self.save_profile_action.setEnabled(False)
         self.iface.addToolBarIcon(self.save_profile_action)
@@ -642,11 +721,11 @@ for module_name in list(sys.modules.keys()):
 
         # Ask user for file location
         file_dialog = QFileDialog()
-        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         file_dialog.setDefaultSuffix("prof")
         file_dialog.setNameFilter("Profile Data (*.prof);;Stats Text (*.txt);;All Files (*.*)")
 
-        if file_dialog.exec_():
+        if file_dialog.exec():
             selected_file = file_dialog.selectedFiles()[0]
             file_format = file_dialog.selectedNameFilter()
 
@@ -733,63 +812,71 @@ for module_name in list(sys.modules.keys()):
             self.is_profiling = False
             log_message("Profiler stopped during plugin unload")
 
-        self.remove_map_canvas_items()
-        self.kill_debug()
+        # Every phase below is individually guarded: one failing step must
+        # never abort unload, or everything after it (toolbar actions, the
+        # dock widget, the options page) leaks and duplicates on reload.
+        try:
+            self.remove_map_canvas_items()
+        except Exception as e:  # nosec B110
+            log_message(f"Warning during canvas item cleanup: {e}")
+        try:
+            self.kill_debug()
+        except Exception as e:  # nosec B110
+            log_message(f"Warning during debug cleanup: {e}")
         # Save geometry before unloading
-        self.save_geometry()
+        try:
+            self.save_geometry()
+        except Exception as e:  # nosec B110
+            log_message(f"Warning saving dock geometry: {e}")
 
         # Disconnect the project changed signal
         try:
             QgsProject.instance().readProject.disconnect(self.dock_widget.qgis_project_changed)
-        except (TypeError, RuntimeError) as e:
-            # Handle cases where signal may already be disconnected or Qt objects deleted
+        except Exception as e:  # nosec B110
+            # Signal already disconnected, or Qt objects already deleted
             log_message(f"Warning during signal disconnection: {e}")
 
-        # Remove toolbar icons and clean up
-        if self.run_action:
-            self.iface.removeToolBarIcon(self.run_action)
-            self.run_action.deleteLater()
-            self.run_action = None
-
-        if self.single_test_action:
-            self.iface.removeToolBarIcon(self.single_test_action)
-            self.single_test_action.deleteLater()
-            self.single_test_action = None
-
-        if self.debug_action:
-            self.iface.removeToolBarIcon(self.debug_action)
-            self.debug_action.deleteLater()
-            self.debug_action = None
-
-        if self.tests_action:
-            self.iface.removeToolBarIcon(self.tests_action)
-            self.tests_action.deleteLater()
-            self.tests_action = None
-
-        # Clean up profiler actions
-        if self.profiler_action:
-            self.iface.removeToolBarIcon(self.profiler_action)
-            self.profiler_action.deleteLater()
-            self.profiler_action = None
-
-        if self.save_profile_action:
-            self.iface.removeToolBarIcon(self.save_profile_action)
-            self.save_profile_action.deleteLater()
-            self.save_profile_action = None
+        # Remove toolbar icons and clean up (each guarded so one dead Qt
+        # object cannot abort the rest of the cleanup)
+        for action_attr in (
+            "run_action",
+            "single_test_action",
+            "debug_action",
+            "tests_action",
+            "profiler_action",
+            "save_profile_action",
+        ):
+            action = getattr(self, action_attr, None)
+            if action:
+                try:
+                    self.iface.removeToolBarIcon(action)
+                    action.deleteLater()
+                except Exception as e:  # nosec B110
+                    log_message(f"Warning removing {action_attr}: {e}")
+            setattr(self, action_attr, None)
 
         # Unregister options widget factory
-        if self.options_factory:
-            self.iface.unregisterOptionsWidgetFactory(self.options_factory)
-            self.options_factory = None
+        try:
+            if self.options_factory:
+                self.iface.unregisterOptionsWidgetFactory(self.options_factory)
+                self.options_factory = None
+        except Exception as e:  # nosec B110
+            log_message(f"Warning unregistering options factory: {e}")
 
         # Remove canvas event filter
-        if hasattr(self, "_canvas_overlay_filter") and self._canvas_overlay_filter:
-            self.iface.mapCanvas().viewport().removeEventFilter(self._canvas_overlay_filter)
-            self._canvas_overlay_filter = None
+        try:
+            if hasattr(self, "_canvas_overlay_filter") and self._canvas_overlay_filter:
+                self.iface.mapCanvas().viewport().removeEventFilter(self._canvas_overlay_filter)
+                self._canvas_overlay_filter = None
+        except Exception as e:  # nosec B110
+            log_message(f"Warning removing canvas event filter: {e}")
 
-        # Remove dock widget if it exists
+        # Remove dock widget if it exists. Reparent to None before the
+        # queued deleteLater so an immediate plugin reload cannot find the
+        # old instance still attached to the main window.
         if self.dock_widget:
             self.iface.removeDockWidget(self.dock_widget)
+            self.dock_widget.setParent(None)
             self.dock_widget.deleteLater()
             self.dock_widget = None
 
@@ -864,7 +951,7 @@ for module_name in list(sys.modules.keys()):
         if multiprocessing.current_process().pid > 1:
             import debugpy  # pylint: disable=import-outside-toplevel
 
-            debugpy.listen(("127.0.0.1", self.DEBUG_PORT))  # nosec B104 - localhost only for debug
+            debugpy.listen(("127.0.0.1", self.DEBUG_PORT))
             debugpy.wait_for_client()
             self.display_information_message_bar(
                 title="GeoE3",

@@ -19,7 +19,6 @@ from qgis.core import Qgis, QgsFeedback, QgsVectorLayer
 
 from geest.utilities import log_message
 
-
 SQLITE_WRITE_BUSY_TIMEOUT_MS = 10000
 SQLITE_WRITE_MAX_RETRIES = 3
 SQLITE_WRITE_RETRY_DELAY_SECONDS = 0.2
@@ -74,13 +73,76 @@ def _checkpoint_wal(ds) -> None:
     metadata (including empty CRS).  A TRUNCATE checkpoint flushes all WAL
     content back into the main database file and removes the WAL/SHM files,
     ensuring subsequent readers see the full, up-to-date database.
+
+    Delegates to gpkg_doctor so every checkpoint in the process shares one
+    lock (two connections must never interleave checkpoints on one file).
     """
-    if ds is None:
-        return
-    try:
-        ds.ExecuteSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:  # nosec B110 – non-fatal; the close will still flush
-        pass
+    from geest.core.gpkg_doctor import checkpoint_dataset
+
+    checkpoint_dataset(ds)
+
+
+def _ensure_column_exists(gpkg_path: str, column_name: str) -> bool:
+    """Ensure a column exists in study_area_grid, creating it if needed.
+
+    This is a safety net for Windows where add_model_columns_to_grid() may fail
+    due to file locking. Each write function can call this before writing to
+    guarantee the target column exists.
+
+    Args:
+        gpkg_path: Path to the GeoPackage containing study_area_grid.
+        column_name: Name of the column to ensure exists.
+
+    Returns:
+        True if the column exists (or was created), False on failure.
+    """
+    sanitized = _sanitize_column_name(column_name)
+    for attempt in range(SQLITE_WRITE_MAX_RETRIES):
+        ds = _open_gpkg_for_write(gpkg_path)
+        if not ds:
+            if attempt < SQLITE_WRITE_MAX_RETRIES - 1:
+                time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+                continue
+            return False
+
+        try:
+            layer = ds.GetLayerByName("study_area_grid")
+            if not layer:
+                ds = None
+                return False
+
+            layer_defn = layer.GetLayerDefn()
+            for i in range(layer_defn.GetFieldCount()):
+                if layer_defn.GetFieldDefn(i).GetName().lower() == sanitized.lower():
+                    return True  # Already exists
+
+            # Column doesn't exist — create it
+            field_defn = ogr.FieldDefn(sanitized, ogr.OFTReal)
+            if layer.CreateField(field_defn) == 0:
+                log_message(
+                    f"Lazily created grid column: {sanitized}",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+                _checkpoint_wal(ds)
+                return True
+
+            if attempt < SQLITE_WRITE_MAX_RETRIES - 1:
+                log_message(
+                    f"Failed to create column '{sanitized}' (attempt {attempt + 1}), retrying...",
+                    tag="GeoE3",
+                    level=Qgis.Warning,
+                )
+                time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+        finally:
+            ds = None
+
+    log_message(
+        f"Could not create grid column '{sanitized}' after {SQLITE_WRITE_MAX_RETRIES} attempts",
+        tag="GeoE3",
+        level=Qgis.Critical,
+    )
+    return False
 
 
 def extract_model_ids(model_path: str) -> Dict[str, List[str]]:
@@ -199,6 +261,7 @@ def add_model_columns_to_grid(gpkg_path: str, model_path: str) -> bool:
         return False
 
     try:
+        # Get existing field names to avoid duplicates
         ds = _open_gpkg_for_write(gpkg_path)
         if not ds:
             log_message(f"Could not open GeoPackage: {gpkg_path}", level=Qgis.Critical)
@@ -210,7 +273,6 @@ def add_model_columns_to_grid(gpkg_path: str, model_path: str) -> bool:
             ds = None
             return False
 
-        # Get existing field names to avoid duplicates
         layer_defn = layer.GetLayerDefn()
         existing_fields = set()
         for i in range(layer_defn.GetFieldCount()):
@@ -218,21 +280,52 @@ def add_model_columns_to_grid(gpkg_path: str, model_path: str) -> bool:
 
         # Add new columns as Real/Float type
         added_count = 0
+        failed_columns = []
         for col_name in column_names:
-            # Sanitize column name (replace spaces with underscores, limit length)
             sanitized_name = col_name.replace(" ", "_").replace("-", "_")[:63]
 
             if sanitized_name.lower() in existing_fields:
                 continue
 
             field_defn = ogr.FieldDefn(sanitized_name, ogr.OFTReal)
-            if layer.CreateField(field_defn) != 0:
-                log_message(f"Failed to create field: {sanitized_name}", level=Qgis.Warning)
-            else:
-                added_count += 1
+            created = False
+            for attempt in range(SQLITE_WRITE_MAX_RETRIES):
+                if layer.CreateField(field_defn) == 0:
+                    added_count += 1
+                    created = True
+                    break
+                if attempt < SQLITE_WRITE_MAX_RETRIES - 1:
+                    log_message(
+                        f"Failed to create field '{sanitized_name}' (attempt {attempt + 1}), retrying...",
+                        tag="GeoE3",
+                        level=Qgis.Warning,
+                    )
+                    time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+                    # Reopen dataset on retry — Windows may need a fresh connection
+                    ds = None
+                    ds = _open_gpkg_for_write(gpkg_path)
+                    if not ds:
+                        continue
+                    layer = ds.GetLayerByName("study_area_grid")
+                    if not layer:
+                        continue
 
+            if not created:
+                failed_columns.append(sanitized_name)
+                log_message(f"Failed to create field: {sanitized_name}", level=Qgis.Warning)
+
+        _checkpoint_wal(ds)
         ds.FlushCache()
         ds = None
+
+        if failed_columns:
+            log_message(
+                f"Added {added_count} columns, but {len(failed_columns)} failed: {failed_columns}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+            # Return True if at least some columns were added; lazy creation handles the rest
+            return added_count > 0
 
         log_message(f"Added {added_count} model columns to study_area_grid")
         return True
@@ -700,6 +793,27 @@ def write_joined_values_to_grid(
                 log_message(f"Source layer not found in source GeoPackage: {source_layer}", level=Qgis.Warning)
                 return -1
 
+            # Validate source_value_field exists in source layer schema
+            schema_sql = f"PRAGMA table_info({source_layer_sql})"  # nosec B608
+            schema_result = _execute_sql_with_retry(ds, schema_sql, dialect="SQLite")
+            available_columns = []
+            if schema_result is not None:
+                feat = schema_result.GetNextFeature()
+                while feat:
+                    col_name = feat.GetField("name")
+                    if col_name:
+                        available_columns.append(col_name)
+                    feat = schema_result.GetNextFeature()
+                ds.ReleaseResultSet(schema_result)
+
+            if source_value_field not in available_columns:
+                log_message(
+                    f"Column '{source_value_field}' not found in source layer '{source_layer}'. "
+                    f"Available columns: {available_columns}",
+                    level=Qgis.Critical,
+                )
+                return -1
+
             # Clear existing values to preserve NULL semantics for unmatched keys.
             clear_sql = f"UPDATE study_area_grid SET {target_col_sql} = NULL"  # nosec B608
             if area_name:
@@ -823,6 +937,9 @@ def clear_grid_column(gpkg_path: str, column_name: str) -> bool:
 
     sanitized_column = _sanitize_column_name(column_name)
 
+    # Ensure column exists — Windows can fail during add_model_columns_to_grid
+    _ensure_column_exists(gpkg_path, sanitized_column)
+
     try:
         ds = _open_gpkg_for_write(gpkg_path)
         if not ds:
@@ -867,6 +984,9 @@ def count_features_per_grid_cell(
         return -1
 
     sanitized_column = _sanitize_column_name(column_name)
+
+    # Ensure column exists — Windows can fail during add_model_columns_to_grid
+    _ensure_column_exists(gpkg_path, sanitized_column)
 
     try:
         # Load grid layer
@@ -942,6 +1062,21 @@ def count_features_per_grid_cell(
 
         ds = None
         log_message(f"Updated {updated_count} grid cells with feature counts")
+
+        # Set score 0 for all cells with no intersecting features.
+        # "No features nearby" is a meaningful result (no access) and should
+        # render as score 0 (not enabling), not as transparent nodata.
+        ds = _open_gpkg_for_write(gpkg_path)
+        if ds:
+            sql = (
+                f"UPDATE study_area_grid "  # nosec B608
+                f'SET "{sanitized_column}" = 0 '
+                f'WHERE "{sanitized_column}" IS NULL'
+            )
+            _execute_sql_with_retry(ds, sql)
+            ds = None
+            log_message(f"Set score 0 for cells with no features in column {sanitized_column}")
+
         return updated_count
 
     except Exception as e:
@@ -1314,7 +1449,7 @@ def write_aggregation_to_grid(
             log_message(f"Could not open GeoPackage: {gpkg_path}", level=Qgis.Critical)
             return -1
 
-        layer, field_idx = _get_grid_layer_and_field_index(ds, target_column)
+        layer, field_idx = _get_grid_layer_and_field_index(ds, target_column, create_if_missing=True)
         if layer is None or field_idx < 0:
             ds = None
             return -1
@@ -1529,6 +1664,9 @@ def write_buffer_values_to_grid(
 
     sanitized_column = _sanitize_column_name(column_name)
 
+    # Ensure column exists — Windows can fail during add_model_columns_to_grid
+    _ensure_column_exists(gpkg_path, sanitized_column)
+
     try:
         # Load grid layer
         grid_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_grid", "grid", "ogr")
@@ -1619,6 +1757,21 @@ def write_buffer_values_to_grid(
 
         ds = None
         log_message(f"Updated {updated_count} grid cells with buffer scores")
+
+        # Set score 0 for all cells outside every buffer (no access).
+        # "No buffer coverage" is a meaningful result and should render as
+        # score 0 (not enabling), not as transparent nodata.
+        ds = _open_gpkg_for_write(gpkg_path)
+        if ds:
+            sql = (
+                f"UPDATE study_area_grid "  # nosec B608
+                f'SET "{sanitized_column}" = 0 '
+                f'WHERE "{sanitized_column}" IS NULL'
+            )
+            _execute_sql_with_retry(ds, sql)
+            ds = None
+            log_message(f"Set score 0 for cells outside all buffers in column {sanitized_column}")
+
         return updated_count
 
     except Exception as e:

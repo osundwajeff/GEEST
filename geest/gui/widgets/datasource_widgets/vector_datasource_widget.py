@@ -4,6 +4,7 @@
 This module contains functionality for vector datasource widget.
 """
 
+import json
 import os
 import urllib.parse
 
@@ -25,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QStyle,
     QToolButton,
 )
 
@@ -54,26 +56,26 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             filter = None
             tooltip = ""
             if self.attributes.get("use_single_buffer_point", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer that will be buffered with a single buffer."
             elif self.attributes.get("use_point_per_cell", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer whose points will be counted per cell."
             elif self.attributes.get("use_multi_buffer_point", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer whose points will buffered with multiple buffers."
             elif self.attributes.get("use_street_lights", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
             elif self.attributes.get("use_osm_transport_polyline_per_cell", 0):
                 # Putting this before use polyline layer means that
                 # it will be used with priority over a simple line layer
-                filter = QgsMapLayerProxyModel.LineLayer
+                filter = QgsMapLayerProxyModel.Filter.LineLayer
                 tooltip = "An OSM line layer whose features will be classified and the most beneficial category assigned to the cell."
             elif self.attributes.get("use_polyline_per_cell", 0):
-                filter = QgsMapLayerProxyModel.LineLayer
+                filter = QgsMapLayerProxyModel.Filter.LineLayer
                 tooltip = "A line layer whose features will be counted per cell."
             else:
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
                 tooltip = "A polygon layer whose features will be counted per cell."
 
             # Determine if OSM download widget should be added based on indicator type
@@ -249,6 +251,34 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
                 if layer:
                     self.layer_combo.setLayer(layer)
 
+            # Fallback restore by source path for OSM transport widgets where layer IDs
+            # may not be stable across dialog rebuilds or sessions.
+            if self.attributes.get("use_osm_transport_polyline_per_cell", 0):
+                if self.layer_combo.currentLayer() is None:
+                    layer_source_path = self.attributes.get(f"{self.widget_key}_layer_source", "")
+                    if not layer_source_path:
+                        layer_source_path = self.attributes.get("road_network_layer_path", "")
+
+                    if layer_source_path:
+                        existing_layer = None
+                        for project_layer in QgsProject.instance().mapLayers().values():
+                            if hasattr(project_layer, "source") and project_layer.source() == layer_source_path:
+                                existing_layer = project_layer
+                                break
+
+                        if existing_layer:
+                            self.layer_combo.setLayer(existing_layer)
+                        else:
+                            base_path = (
+                                layer_source_path.split("|")[0] if "|" in layer_source_path else layer_source_path
+                            )
+                            if os.path.exists(base_path):
+                                layer_name = os.path.splitext(os.path.basename(base_path))[0]
+                                loaded_layer = QgsVectorLayer(layer_source_path, layer_name, "ogr")
+                                if loaded_layer.isValid():
+                                    QgsProject.instance().addMapLayer(loaded_layer)
+                                    self.layer_combo.setLayer(loaded_layer)
+
             self.shapefile_line_edit = QLineEdit()
             self.shapefile_line_edit.setVisible(False)  # Hide initially
 
@@ -257,7 +287,7 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             clear_icon = QIcon(resources_path("resources", "icons", "clear.svg"))
             self.clear_button.setIcon(clear_icon)
             self.clear_button.setToolTip("Clear")
-            self.clear_button.setCursor(Qt.ArrowCursor)
+            self.clear_button.setCursor(Qt.CursorShape.ArrowCursor)
             self.clear_button.setStyleSheet("border: 0px; padding: 0px;")
             self.clear_button.clicked.connect(self.clear_shapefile)
             self.clear_button.setVisible(False)
@@ -348,9 +378,7 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         """Reposition the clear button when the line edit is resized."""
         log_message("Resizing clear button")
         # Position the clear button inside the line edit
-        frame_width = self.shapefile_line_edit.style().pixelMetric(
-            self.shapefile_line_edit.style().PM_DefaultFrameWidth
-        )
+        frame_width = self.shapefile_line_edit.style().pixelMetric(QStyle.PixelMetric.PM_DefaultFrameWidth)
 
         self.shapefile_line_edit.setStyleSheet(
             f"QLineEdit {{ padding-right: {self.clear_button.sizeHint().width() + frame_width}px; }}"  # noqa E702,E202,E201
@@ -402,6 +430,51 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         self.layer_combo.setFocus()
         self.update_attributes()
 
+    def _load_admin_boundary_layer(self):
+        """Load admin boundary layer from model.json.
+
+        This is the same approach used by the road network panel for active
+        transport downloads. The admin boundary is a standalone file (e.g.
+        Admin0.shp) with reliable CRS metadata, unlike GeoPackage layers
+        which may have stale CRS after study area creation.
+
+        Returns:
+            QgsVectorLayer or None if not available.
+        """
+        settings = QSettings()
+        working_directory = settings.value("last_working_directory", "")
+        if not working_directory:
+            return None
+        model_path = os.path.join(working_directory, "model.json")
+        if not os.path.exists(model_path):
+            return None
+        try:
+            with open(model_path, "r") as f:
+                model = json.load(f)
+            admin_source = model.get("admin_boundary_layer_source")
+            if not admin_source:
+                return None
+            base_path = admin_source.split("|")[0] if "|" in admin_source else admin_source
+            if not os.path.exists(base_path):
+                return None
+            layer_name = os.path.splitext(os.path.basename(base_path))[0]
+            layer = QgsVectorLayer(admin_source, layer_name, "ogr")
+            if layer.isValid():
+                log_message(
+                    f"Loaded admin boundary layer for OSM download: {admin_source}",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+                return layer
+            log_message(
+                f"Admin boundary layer is invalid: {admin_source}",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+        except Exception as e:
+            log_message(f"Error loading admin boundary layer: {e}", tag="GeoE3", level=Qgis.Warning)
+        return None
+
     def start_osm_download(self) -> None:
         """Start OSM data download process using proper QgsTask integration."""
         log_message("Starting OSM download...", tag="GeoE3", level=Qgis.Info)
@@ -434,11 +507,32 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
 
         # Load study area extent from geopackage (most reliable source)
         extent = QgsRectangle()
-        study_area_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_bboxes", "temp_bbox", "ogr")
+        source_crs = None
+        study_area_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_polygons", "temp_bbox", "ogr")
 
         if study_area_layer.isValid() and study_area_layer.featureCount() > 0:
             extent = study_area_layer.extent()
             source_crs = study_area_layer.crs()
+
+            # On Windows, the OGR GeoPackage driver can return a stale or null extent
+            # from gpkg_contents right after study area creation. If the extent looks
+            # invalid, recompute it directly from feature geometries.
+            if extent.isEmpty() or not extent.isFinite():
+                log_message(
+                    "study_area_bboxes extent is null/empty, computing from features",
+                    tag="GeoE3",
+                    level=Qgis.Warning,
+                )
+                extent = QgsRectangle()
+                for feat in study_area_layer.getFeatures():
+                    if feat.hasGeometry():
+                        geom = feat.geometry()
+                        if not geom.isEmpty():
+                            bbox = geom.boundingBox()
+                            if extent.isEmpty():
+                                extent = bbox
+                            else:
+                                extent.combineExtentWith(bbox)
 
             # Transform extent to EPSG:4326 (required by Overpass API)
             if source_crs.authid() != "EPSG:4326":
@@ -489,6 +583,90 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             )
             return
 
+        # WGS84 bounds validation — catch stale/garbage extents before sending to Overpass
+        if extent.xMinimum() < -180 or extent.xMaximum() > 180 or extent.yMinimum() < -90 or extent.yMaximum() > 90:
+            log_message(
+                f"Extent outside WGS84 bounds after transform: {extent.toString()}. "
+                f"Attempting to recompute from features.",
+                tag="GeoE3",
+                level=Qgis.Warning,
+            )
+            # Recompute extent from features in WGS84
+            wgs84_extent = QgsRectangle()
+            wgs84_crs = QgsCoordinateReferenceSystem("EPSG:4326")
+            # source_crs may be None if we came from the project layers fallback
+            crs_for_transform = source_crs if source_crs is not None else study_area_layer.crs()
+            for feat in study_area_layer.getFeatures():
+                if feat.hasGeometry():
+                    geom = feat.geometry()
+                    if not geom.isEmpty():
+                        bbox = geom.boundingBox()
+                        if crs_for_transform.isValid() and crs_for_transform.authid() != "EPSG:4326":
+                            transform = QgsCoordinateTransform(crs_for_transform, wgs84_crs, project)
+                            bbox = transform.transformBoundingBox(bbox)
+                        if wgs84_extent.isEmpty():
+                            wgs84_extent = bbox
+                        else:
+                            wgs84_extent.combineExtentWith(bbox)
+            if not wgs84_extent.isEmpty() and wgs84_extent.isFinite():
+                # Final check — if still outside WGS84, the CRS transform was skipped
+                # (wrong CRS metadata). Try project CRS as fallback.
+                if (
+                    wgs84_extent.xMaximum() > 180
+                    or wgs84_extent.yMaximum() > 90
+                    or wgs84_extent.xMinimum() < -180
+                    or wgs84_extent.yMinimum() < -90
+                ):
+                    project_crs = project.crs() if project.crs().isValid() else None
+                    if project_crs and project_crs.authid() != "EPSG:4326":
+                        log_message(
+                            "Recomputed extent still outside WGS84 — trying project CRS transform",
+                            tag="GeoE3",
+                            level=Qgis.Warning,
+                        )
+                        transform = QgsCoordinateTransform(project_crs, wgs84_crs, project)
+                        wgs84_extent = transform.transformBoundingBox(wgs84_extent)
+
+                # If STILL outside bounds, abort — don't send garbage to Overpass
+                if (
+                    wgs84_extent.xMaximum() > 180
+                    or wgs84_extent.yMaximum() > 90
+                    or wgs84_extent.xMinimum() < -180
+                    or wgs84_extent.yMinimum() < -90
+                ):
+                    log_message(
+                        f"Invalid WGS84 extent after recomputation: {wgs84_extent.toString()}. Aborting OSM download.",
+                        tag="GeoE3",
+                        level=Qgis.Critical,
+                    )
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Extent",
+                        f"Study area extent is invalid: {wgs84_extent.toString()}\n\n"
+                        "This may be a GeoPackage CRS issue. Try reopening the project.",
+                    )
+                    return
+
+                extent = wgs84_extent
+                log_message(
+                    f"Recomputed extent from features: {extent.toString()}",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+            else:
+                log_message(
+                    f"Invalid WGS84 extent: {extent.toString()}. Aborting OSM download.",
+                    tag="GeoE3",
+                    level=Qgis.Critical,
+                )
+                QMessageBox.warning(
+                    self,
+                    "Invalid Extent",
+                    f"Study area extent is invalid: {extent.toString()}\n\n"
+                    "This may be a GeoPackage driver issue. Try reopening the project.",
+                )
+                return
+
         if self.osm_download_type is None:
             log_message("No OSM download type set", tag="GeoE3", level=Qgis.Critical)
             return
@@ -500,22 +678,47 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
         log_message(f"Output directory: {study_area_dir}", tag="GeoE3", level=Qgis.Info)
         log_message(f"Filename: {filename}", tag="GeoE3", level=Qgis.Info)
         log_message(f"Full output file path: {output_file_path}", tag="GeoE3", level=Qgis.Info)
-        log_message(f"Extent: {extent.asWktPolygon()}", tag="GeoE3", level=Qgis.Info)
-        log_message(f"Output CRS: {output_crs.authid()}", tag="GeoE3", level=Qgis.Info)
 
         if self.osm_download_button:
             self.osm_controls.set_running()
 
+        # Try admin boundary layer first (same approach as active transport).
+        # The admin boundary is a standalone file with reliable CRS metadata.
+        # OSMDownloaderTask will read the CRS and transform to WGS84 itself.
+        admin_layer = self._load_admin_boundary_layer()
+
         try:
-            # Create task using proper QgsTask-based approach
-            self.osm_task = OSMDownloaderTask(
-                osm_download_type=self.osm_download_type,
-                extents=extent,
-                output_path=output_file_path,
-                crs=output_crs,
-                use_cache=False,
-                delete_gpkg=True,
-            )
+            if admin_layer is not None:
+                # Primary path: pass reference_layer, let OSMDownloaderTask handle CRS
+                log_message("Using admin boundary layer as reference for OSM download", tag="GeoE3", level=Qgis.Info)
+                self.osm_task = OSMDownloaderTask(
+                    osm_download_type=self.osm_download_type,
+                    reference_layer=admin_layer,
+                    extents=None,
+                    output_path=output_file_path,
+                    crs=output_crs,
+                    use_cache=False,
+                    delete_gpkg=True,
+                )
+            else:
+                # Fallback: use pre-computed extent from study_area_polygons
+                log_message(
+                    "No admin boundary layer available, using pre-computed extent",
+                    tag="GeoE3",
+                    level=Qgis.Info,
+                )
+                log_message(f"Extent: {extent.asWktPolygon()}", tag="GeoE3", level=Qgis.Info)
+                self.osm_task = OSMDownloaderTask(
+                    osm_download_type=self.osm_download_type,
+                    reference_layer=None,
+                    extents=extent,
+                    output_path=output_file_path,
+                    crs=output_crs,
+                    use_cache=False,
+                    delete_gpkg=True,
+                )
+
+            log_message(f"Output CRS: {output_crs.authid()}", tag="GeoE3", level=Qgis.Info)
 
             # Track if error already occurred to avoid duplicate messages
             self._osm_error_handled = False
@@ -585,7 +788,18 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             self.layer_combo.setLayer(layer)
 
             if self.osm_download_button:
-                self.osm_controls.set_downloaded()
+                if layer.featureCount() == 0:
+                    self.osm_controls.set_no_data()
+                else:
+                    self.osm_controls.set_downloaded()
+
+            if layer.featureCount() == 0:
+                QMessageBox.information(
+                    self,
+                    "OSM Download Completed",
+                    "The OSM download completed, but no features were found in this area. "
+                    "GeoE3 will use neutral values for this indicator so analysis can continue.",
+                )
         else:
             error_msg = f"Downloaded file exists but could not be loaded as a valid layer: {gpkg_path}"
             log_message(f"Failed to load layer: {error_msg}", tag="GeoE3", level=Qgis.Critical)

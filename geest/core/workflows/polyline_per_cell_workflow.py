@@ -27,7 +27,7 @@ from geest.core.grid_column_utils import (
 )
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class PolylinePerCellWorkflow(WorkflowBase):
@@ -57,25 +57,43 @@ class PolylinePerCellWorkflow(WorkflowBase):
             item, cell_size_m, analysis_scale, feedback, context, working_directory
         )  # ⭐️ Item is a reference - whatever you change in this item will directly update the tree
         self.workflow_name = "use_polyline_per_cell"
-        layer_path = self.attributes.get("polyline_per_cell_shapefile", None)
-        if layer_path:
-            layer_path = unquote(layer_path)
+        # The layer may have been configured under any of these keys: the
+        # Active Transport indicator supports both the plain polyline and the
+        # OSM transport modes, and switching analysis_mode must not orphan an
+        # already-configured layer.
+        candidate_keys = (
+            "polyline_per_cell_shapefile",
+            "polyline_per_cell_layer_source",
+            "osm_transport_polyline_per_cell_shapefile",
+            "osm_transport_polyline_per_cell_layer_source",
+            "road_network_layer_path",
+        )
+        layer_path = None
+        for key in candidate_keys:
+            candidate = self.attributes.get(key, None)
+            if candidate:
+                layer_path = unquote(candidate) if key.endswith("shapefile") else candidate
+                if key != candidate_keys[0]:
+                    log_message(
+                        f"Polyline layer resolved from fallback key {key}",
+                        tag="GeoE3",
+                        level=Qgis.Info,
+                    )
+                break
         if not layer_path:
+            configured = sorted(
+                key for key, value in self.attributes.items() if value and ("layer" in key or "shapefile" in key)
+            )
             log_message(
-                "Nothing found in polyline_per_cell_shapefile, trying polygline_per_cell_layer_source.",
+                f"No polyline layer configured. Checked {candidate_keys}; "
+                f"data-source attributes present: {configured}",
                 tag="GeoE3",
                 level=Qgis.Warning,
             )
-            layer_path = self.attributes.get("polyline_per_cell_layer_source", None)
-            if not layer_path:
-                log_message(
-                    "No points layer found in polyline_per_cell_layer_source.",
-                    tag="GeoE3",
-                    level=Qgis.Warning,
-                )
-                return False
+            raise WorkflowNotConfiguredError("No polyline layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_path, "polyline_per_cell Layer", "ogr")
         self.workflow_name = "polyline_per_cell"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

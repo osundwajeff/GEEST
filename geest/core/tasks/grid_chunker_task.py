@@ -158,6 +158,10 @@ class GridChunkerTask:
         """
         Writes the chunk polygon boundaries to a GeoPackage using the GDAL OGR API.
 
+        Standalone use only: inside the plugin, StudyAreaProcessingTask queues
+        chunk tiles through the UnifiedWriterThread instead, so only one write
+        connection ever touches the study area GeoPackage.
+
         If self.geometry is not none, chunks that do not intersect with the geom
         will be excluded. Additionally, chunks will be labelled as "inside" or "edge"
         so that the user can easily filter out chunks that are completely inside the geometry.

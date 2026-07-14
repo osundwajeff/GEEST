@@ -4,6 +4,7 @@
 This module contains functionality for factor aggregation dialog.
 """
 
+import copy
 from typing import Optional, Sequence
 
 from qgis.core import Qgis
@@ -87,10 +88,18 @@ class FactorAggregationDialog(CustomBaseDialog):
         # and set it to the first available usable mode
         for guid in self.guids:
             item = self.tree_item.getItemByGuid(guid)
-            item.ensureValidAnalysisMode()
+            if item and (
+                not item.attribute("analysis_mode", "") or item.attribute("analysis_mode", "") == "Do Not Use"
+            ):
+                item.ensureValidAnalysisMode()
 
         self.weightings = {}  # Temporary weightings
         self.data_sources = {}  # Temporary data sources
+        self._initial_indicator_attributes = {
+            guid: copy.deepcopy(self.tree_item.getItemByGuid(guid).attributes())
+            for guid in self.guids
+            if self.tree_item.getItemByGuid(guid) is not None
+        }
 
         self.weighting_column_visible = len(self.guids) > 1
 
@@ -101,7 +110,7 @@ class FactorAggregationDialog(CustomBaseDialog):
         # Scrollable body
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll_widget = QWidget()
         layout = QVBoxLayout(scroll_widget)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -159,24 +168,24 @@ class FactorAggregationDialog(CustomBaseDialog):
             self.table.setHorizontalHeaderLabels(
                 ["Input", "OSM Download", "Indicator", "Weight 0-1", "Use", "GUID", ""]
             )
-            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         else:
             self.table.setColumnCount(6)
             self.table.setHorizontalHeaderLabels(["Input", "Indicator", "Weight 0-1", "Use", "GUID", ""])
-            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
 
         if self.has_osm_column:
-            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
-            self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+            self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
 
         if self.has_osm_column:
             self.table.setColumnWidth(1, 170)
@@ -233,14 +242,14 @@ class FactorAggregationDialog(CustomBaseDialog):
         layout.addLayout(help_layout)
 
         # Buttons — outside the scroll area so they remain always visible
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         auto_calculate_button = QPushButton("Balance Weights")
         toggle_guid_button = QPushButton("Show GUIDs")
         if self.weighting_column_visible:
-            self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ActionRole)
+            self.button_box.addButton(auto_calculate_button, QDialogButtonBox.ButtonRole.ActionRole)
         verbose_mode = setting(key="verbose_mode", default=0)
         if verbose_mode:
-            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ActionRole)
+            self.button_box.addButton(toggle_guid_button, QDialogButtonBox.ButtonRole.ActionRole)
 
         self.button_box.accepted.connect(self.accept_changes)
         self.button_box.rejected.connect(self.reject)
@@ -270,7 +279,7 @@ class FactorAggregationDialog(CustomBaseDialog):
         if geometry:
             try:
                 self.restoreGeometry(geometry)
-                screen = QApplication.desktop().screenGeometry()
+                screen = QApplication.primaryScreen().geometry()
                 if self.width() > int(screen.width() * 0.85) or self.height() > int(screen.height() * 0.85):
                     settings.remove("FactorAggregationDialog/geometry_v2")
                 else:
@@ -278,7 +287,7 @@ class FactorAggregationDialog(CustomBaseDialog):
             except Exception:  # nosec B110
                 pass
         # Sensible default: cap at 900px wide, 80% screen height
-        screen = QApplication.desktop().screenGeometry()
+        screen = QApplication.primaryScreen().geometry()
         width = min(900, int(screen.width() * 0.65))
         height = min(int(screen.height() * 0.80), 750)
         self.resize(width, height)
@@ -303,21 +312,18 @@ class FactorAggregationDialog(CustomBaseDialog):
         log_message("data_changed signal received, refreshing configuration")
         self.configuration_widget.refresh_radio_buttons(attributes)
 
-    def create_checkbox_widget(self, row: int, weighting_value: float) -> QWidget:
+    def create_checkbox_widget(self, row: int, is_checked: bool) -> QWidget:
         """⚙️ Create checkbox widget.
 
         Args:
             row: Row.
-            weighting_value: Weighting value.
+            is_checked: Initial checkbox state.
 
         Returns:
             The result of the operation.
         """
         checkbox = QCheckBox()
-        if weighting_value > 0:
-            checkbox.setChecked(True)
-        else:
-            checkbox.setChecked(False)
+        checkbox.setChecked(is_checked)
         checkbox.stateChanged.connect(lambda state, r=row: self.toggle_row_widgets(r, state))
 
         container = QWidget()
@@ -348,8 +354,6 @@ class FactorAggregationDialog(CustomBaseDialog):
             if widget:
                 if isinstance(widget, QDoubleSpinBox) and not is_enabled:
                     widget.setValue(0)
-                if isinstance(widget, QDoubleSpinBox) and is_enabled:
-                    widget.setValue(1.0)
                 widget.setEnabled(is_enabled)
         self.validate_weightings()
 
@@ -377,6 +381,7 @@ class FactorAggregationDialog(CustomBaseDialog):
             analysis_item = self.tree_item.parentItem.parentItem if self.tree_item.parentItem else None
             if analysis_item:
                 attributes["analysis_scale"] = analysis_item.attribute("analysis_scale", "")
+                attributes["road_network_layer_path"] = analysis_item.attribute("road_network_layer_path", "")
             log_message(f"Populating table for GUID: {guid}")
             log_message(f"Attributes: {item.attributesAsMarkdown()}")
 
@@ -420,6 +425,11 @@ class FactorAggregationDialog(CustomBaseDialog):
 
             if self.weighting_column_visible:
                 weighting_value = float(attributes.get("factor_weighting", 0.0))
+                is_included_in_analysis = (
+                    item.getStatus() != "Excluded from analysis"
+                    and weighting_value > 0
+                    and attributes.get("analysis_mode", "") != "Do Not Use"
+                )
                 weighting_item = QDoubleSpinBox()
                 weighting_item.setRange(0.0, 1.0)
                 weighting_item.setDecimals(4)
@@ -428,10 +438,20 @@ class FactorAggregationDialog(CustomBaseDialog):
                 weighting_item.valueChanged.connect(self.validate_weightings)
                 self.table.setCellWidget(row, self.col_weight, weighting_item)
                 self.weightings[guid] = weighting_item
-                checkbox_widget = self.create_checkbox_widget(row, weighting_value)
+                checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis)
             else:
-                checkbox_widget = self.create_checkbox_widget(row, 1)
+                weighting_value = float(attributes.get("factor_weighting", 0.0))
+                is_included_in_analysis = (
+                    item.getStatus() != "Excluded from analysis"
+                    and weighting_value > 0
+                    and attributes.get("analysis_mode", "") != "Do Not Use"
+                )
+                checkbox_widget = self.create_checkbox_widget(row, is_included_in_analysis)
             self.table.setCellWidget(row, self.col_use, checkbox_widget)
+
+            # Ensure row widgets are immediately in sync with initial checkbox state.
+            initial_state = Qt.CheckState.Checked if self.is_checkbox_checked(row) else Qt.CheckState.Unchecked
+            self.toggle_row_widgets(row, initial_state)
 
             guid_item = QTableWidgetItem(guid)
             guid_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -549,15 +569,89 @@ class FactorAggregationDialog(CustomBaseDialog):
 
     def accept_changes(self):
         """Handle the OK button by applying changes and closing the dialog."""
+        self.save_use_state_to_model()
         self.save_weightings_to_model()
+        self._clear_changed_indicator_results()
         self.save_geometry()
         self.accept()
+
+    @staticmethod
+    def _normalized_attributes_for_change_check(attributes: dict) -> dict:
+        """Return attributes with non-configuration keys removed for change checks."""
+        excluded_keys = {
+            "result",
+            "result_file",
+            "error",
+            "error_file",
+            "execution_start_time",
+            "execution_end_time",
+            "factor_weighting",
+            "default_factor_weighting",
+            "dimension_weighting",
+            "default_dimension_weighting",
+            "analysis_weighting",
+            "default_analysis_weighting",
+        }
+        return {key: value for key, value in attributes.items() if key not in excluded_keys}
+
+    def _clear_changed_indicator_results(self) -> None:
+        """Clear result state for indicators whose configuration changed in this dialog."""
+        for guid in self.guids:
+            indicator_item = self.tree_item.getItemByGuid(guid)
+            if indicator_item is None:
+                continue
+
+            previous_attributes = self._initial_indicator_attributes.get(guid, {})
+            current_attributes = indicator_item.attributes()
+
+            previous_normalized = self._normalized_attributes_for_change_check(previous_attributes)
+            current_normalized = self._normalized_attributes_for_change_check(current_attributes)
+
+            if previous_normalized != current_normalized:
+                indicator_item.clear(recursive=False)
+
+    def save_use_state_to_model(self) -> None:
+        """Persist the Use checkbox state to indicator factor_weighting values."""
+        for row, indicator_guid in enumerate(self.guids):
+            checkbox_checked = self.is_checkbox_checked(row)
+            indicator_item = self.tree_item.getItemByGuid(indicator_guid)
+            if indicator_item is None:
+                continue
+
+            analysis_mode = indicator_item.attribute("analysis_mode", "")
+            old_weighting = float(indicator_item.attribute("factor_weighting", 0.0) or 0.0)
+            was_enabled = analysis_mode != "Do Not Use" and old_weighting > 0.0
+
+            # If user explicitly re-enables an indicator that was disabled via
+            # analysis_mode="Do Not Use", restore a valid mode first.
+            if checkbox_checked and analysis_mode == "Do Not Use":
+                indicator_item.ensureValidAnalysisMode()
+                analysis_mode = indicator_item.attribute("analysis_mode", "")
+
+            # No usable analysis mode could be restored; keep it disabled.
+            if analysis_mode == "Do Not Use":
+                checkbox_checked = False
+
+            new_weighting = old_weighting
+            if checkbox_checked:
+                if new_weighting == 0.0:
+                    default_weighting = float(indicator_item.attribute("default_factor_weighting", 1.0) or 1.0)
+                    new_weighting = default_weighting
+            else:
+                new_weighting = 0.0
+
+            will_be_enabled = analysis_mode != "Do Not Use" and new_weighting > 0.0
+            if was_enabled != will_be_enabled:
+                indicator_item.clear(recursive=False)
+
+            indicator_item.setAttribute("factor_weighting", new_weighting)
+            indicator_item.setData(2, f"{new_weighting:.2f}")
 
     def validate_weightings(self):
         """Validate weightings to ensure they sum to 1 and are within range."""
         # If weighting column is not visible (single indicator), always enable OK button
         if not self.weighting_column_visible:
-            self.button_box.button(QDialogButtonBox.Ok).setEnabled(True)
+            self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
             return
 
         try:
@@ -583,4 +677,4 @@ class FactorAggregationDialog(CustomBaseDialog):
                 spin_box.setStyleSheet("color: red;")  # Set font color to red if invalid
 
         # Enable or disable the OK button based on the validity of the sum
-        self.button_box.button(QDialogButtonBox.Ok).setEnabled(valid_sum)
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(valid_sum)

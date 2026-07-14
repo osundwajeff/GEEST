@@ -6,8 +6,8 @@ from urllib.parse import quote
 
 from qgis.core import (
     QgsApplication,
-    QgsMapLayerType,
     QgsMapLayerProxyModel,
+    QgsMapLayerType,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QSettings
@@ -27,11 +27,65 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
 
     VECTOR_EXTENSIONS = {".gpkg", ".shp", ".geojson", ".json", ".sqlite", ".fgb", ".parquet"}
 
+    # ------------------------------------------------------------------
+    # Configuration hooks — subclasses override these to customise behaviour
+    # ------------------------------------------------------------------
+
+    def _get_s2s_filename(self) -> str:
+        """Return the output filename stem (without extension)."""
+        return "s2s_nighttime_lights"
+
+    def _get_gate_label(self) -> str:
+        """Return the S2S gate label used for serialising concurrent downloads."""
+        return "widget:nighttime_lights"
+
+    def _get_s2s_fields(self) -> list:
+        """Return the list of S2S fields to fetch."""
+        return [self.s2s_ntl_field]
+
+    def _get_s2s_output_path(self, working_directory: str) -> str:
+        """Return the full output path for the S2S GeoPackage."""
+        return os.path.join(working_directory, "study_area", f"{self._get_s2s_filename()}.gpkg")
+
+    def _resolve_default_s2s_output_path(self, working_directory: str) -> str:
+        """Return the default S2S output path for auto-load."""
+        if not working_directory:
+            return ""
+        return self._get_s2s_output_path(working_directory)
+
+    def _get_s2s_field_name(self) -> str:
+        """Return a human-readable field name for UI messages."""
+        return "nighttime lights"
+
+    def _get_s2s_success_message(self) -> str:
+        """Return the status text shown on successful download."""
+        return "S2S nighttime lights downloaded"
+
+    def _get_empty_fields_error(self) -> str:
+        """Return the error message when no fields are entered."""
+        return f"No S2S {self._get_s2s_field_name()} field is configured."
+
+    def _get_missing_field_error(self) -> str:
+        """Return the error message when a required field is not configured."""
+        return f"No S2S {self._get_s2s_field_name()} field is configured."
+
+    def _validate_required_fields(self, fields: list) -> str:
+        """Validate fields and return an error message, or empty string if valid."""
+        if not fields:
+            return self._get_missing_field_error()
+        return ""
+
+    # ------------------------------------------------------------------
+    # UI setup
+    # ------------------------------------------------------------------
+
     def add_internal_widgets(self) -> None:
         """Build raster controls and append S2S fetch controls."""
         super().add_internal_widgets()
 
-        self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+        self.raster_layer_combo.setFilters(
+            QgsMapLayerProxyModel.Filter.RasterLayer | QgsMapLayerProxyModel.Filter.VectorLayer
+        )
         self.raster_layer_combo.setToolTip("Select raster or vector layer from the map")
         self.raster_layer_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -57,27 +111,24 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
 
         self.s2s_task = None
         self._s2s_gate_token = None
-        self.s2s_vector_output_path = self.attributes.get("s2s_output_path", "")
-        self.s2s_raster_output_path = ""
+        self.s2s_output_path = self.attributes.get("s2s_output_path", "")
         self._s2s_error_handled = False
 
-        if not self.s2s_vector_output_path:
+        if not self.s2s_output_path:
             settings = QSettings()
             working_directory = settings.value("last_working_directory", "")
             candidate_path = self._resolve_default_s2s_output_path(working_directory)
             if candidate_path and os.path.exists(candidate_path):
-                self.s2s_vector_output_path = candidate_path
-        if self.s2s_vector_output_path and os.path.exists(self.s2s_vector_output_path):
+                self.s2s_output_path = candidate_path
+        if self.s2s_output_path and os.path.exists(self.s2s_output_path):
             self._select_existing_s2s_output_layer()
 
-    def _resolve_default_s2s_output_path(self, working_directory: str) -> str:
-        """Return default S2S output path for this widget."""
-        if not working_directory:
-            return ""
-        return os.path.join(working_directory, "study_area", "s2s_nighttime_lights.gpkg")
+    # ------------------------------------------------------------------
+    # Template method: S2S download flow
+    # ------------------------------------------------------------------
 
     def fetch_from_s2s(self) -> None:
-        """Fetch S2S summary rows for downstream grid-based regional scoring."""
+        """Template method: fetch S2S summary rows for downstream grid-based regional scoring."""
         settings = QSettings()
         working_directory = settings.value("last_working_directory", "")
         if not working_directory or not os.path.exists(working_directory):
@@ -97,9 +148,10 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
             )
             return
 
-        ntl_field = self.s2s_ntl_field
-        if not ntl_field:
-            QMessageBox.warning(self, "S2S Field Required", "No S2S nighttime lights field is configured.")
+        fields = self._get_s2s_fields()
+        missing_field_error = self._validate_required_fields(fields)
+        if missing_field_error:
+            QMessageBox.warning(self, "S2S Field Required", missing_field_error)
             return
 
         aoi_layer = QgsVectorLayer(f"{study_area_gpkg}|layername=study_area_bboxes", "study_area_bboxes", "ogr")
@@ -116,11 +168,10 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
             QMessageBox.warning(self, "Invalid AOI", "Failed to build AOI feature from study area geometry.")
             return
 
-        filename = "s2s_nighttime_lights"
-        self.s2s_vector_output_path = os.path.join(working_directory, "study_area", f"{filename}.gpkg")
-        self.s2s_raster_output_path = ""
+        filename = self._get_s2s_filename()
+        self.s2s_output_path = self._get_s2s_output_path(working_directory)
 
-        gate_label = "widget:nighttime_lights"
+        gate_label = self._get_gate_label()
         token = S2STaskGate.acquire(gate_label)
         if not token:
             active = S2STaskGate.active_label() or "another panel"
@@ -138,7 +189,7 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
 
         self.s2s_task = S2SDownloaderTask(
             aoi=aoi_feature,
-            fields=[ntl_field],
+            fields=fields,
             working_dir=working_directory,
             filename=filename,
             spatial_join_method="centroid",
@@ -150,6 +201,10 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
         self.s2s_task.taskCompleted.connect(self._on_s2s_completed)
         self.s2s_task.taskTerminated.connect(self._on_s2s_terminated)
         QgsApplication.taskManager().addTask(self.s2s_task)
+
+    # ------------------------------------------------------------------
+    # S2S task callbacks (shared across NTL and subclasses)
+    # ------------------------------------------------------------------
 
     def _on_s2s_progress(self, message: str) -> None:
         """Update S2S status text from task progress."""
@@ -174,19 +229,19 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
         self.s2s_controls.set_cancelled()
 
     def _on_s2s_completed(self) -> None:
-        """Record S2S vector output and update attributes for grid-based workflows."""
+        """Load output layer after successful S2S task completion."""
         self._release_s2s_gate()
         self.s2s_controls.reset()
 
-        if not os.path.exists(self.s2s_vector_output_path):
+        if not os.path.exists(self.s2s_output_path):
             self._set_status("S2S output not found")
-            self.s2s_controls.set_not_found(self.s2s_vector_output_path)
+            self.s2s_controls.set_not_found(self.s2s_output_path)
             return
 
-        layer_name = os.path.splitext(os.path.basename(self.s2s_vector_output_path))[0]
-        s2s_layer = S2SDataSourceWidget._load_or_reuse_vector_layer(self.s2s_vector_output_path, layer_name)
+        layer_name = os.path.splitext(os.path.basename(self.s2s_output_path))[0]
+        s2s_layer = S2SDataSourceWidget._load_or_reuse_vector_layer(self.s2s_output_path, layer_name)
         if s2s_layer is None:
-            self.s2s_controls.set_load_failed(self.s2s_vector_output_path)
+            self.s2s_controls.set_load_failed(self.s2s_output_path)
             self._set_status("S2S output invalid")
             QMessageBox.warning(self, "Invalid S2S Output", "S2S output file exists but could not be loaded.")
             return
@@ -196,7 +251,7 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
         self.raster_layer_combo.setVisible(True)
         self.raster_layer_combo.setLayer(s2s_layer if s2s_layer.isValid() else None)
 
-        self._set_status("S2S nighttime lights downloaded")
+        self._set_status(self._get_s2s_success_message())
         self.s2s_controls.set_downloaded()
         self.update_attributes()
 
@@ -212,12 +267,12 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
             self.s2s_status_label.setText(message)
 
     def _select_existing_s2s_output_layer(self) -> None:
-        """Auto-select existing S2S nighttime lights layer from disk."""
-        if not self.s2s_vector_output_path or not os.path.exists(self.s2s_vector_output_path):
+        """Auto-select existing S2S output layer from disk."""
+        if not self.s2s_output_path or not os.path.exists(self.s2s_output_path):
             return
 
-        layer_name = os.path.splitext(os.path.basename(self.s2s_vector_output_path))[0]
-        output_layer = S2SDataSourceWidget._load_or_reuse_vector_layer(self.s2s_vector_output_path, layer_name)
+        layer_name = os.path.splitext(os.path.basename(self.s2s_output_path))[0]
+        output_layer = S2SDataSourceWidget._load_or_reuse_vector_layer(self.s2s_output_path, layer_name)
         if output_layer is None:
             self._set_status("S2S output invalid")
             return
@@ -228,6 +283,10 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
         self.raster_layer_combo.setLayer(output_layer)
         self.s2s_controls.set_downloaded()
         self.update_attributes()
+
+    # ------------------------------------------------------------------
+    # Manual raster selection (NTL-specific, kept here for subclasses)
+    # ------------------------------------------------------------------
 
     def select_raster(self) -> None:
         """Select raster or vector file for nighttime lights input."""
@@ -297,5 +356,5 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
             return
         self.attributes["s2s_ntl_field"] = self.s2s_ntl_field
         self.attributes["s2s_spatial_join_method"] = "centroid"
-        if self.s2s_vector_output_path:
-            self.attributes["s2s_output_path"] = self.s2s_vector_output_path
+        if self.s2s_output_path:
+            self.attributes["s2s_output_path"] = self.s2s_output_path

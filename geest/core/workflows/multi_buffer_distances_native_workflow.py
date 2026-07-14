@@ -19,6 +19,7 @@ from qgis.core import (
     QgsGeometry,
     QgsProcessingContext,
     QgsProcessingFeedback,
+    QgsProject,
     QgsVectorLayer,
     edit,
 )
@@ -139,12 +140,52 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
         log_message(f"Using points layer at {layer_path}")
         self.features_layer = QgsVectorLayer(layer_path, "points", "ogr")
         if not self.features_layer.isValid():
+            # OGR cannot open memory/temporary layers (e.g. from QuickOSM).
+            # Fall back to finding the layer in the current QGIS project by
+            # layer ID first, then by layer name.
             log_message(
-                f"Invalid points layer found in {layer_path}.",
+                f"Could not open '{layer_path}' via OGR — trying QGIS project lookup.",
                 tag="GeoE3",
                 level=Qgis.Warning,
             )
-            raise Exception("Invalid points layer found.")
+            self.features_layer = None
+
+            # 1) Try by layer ID (most reliable within the same session)
+            layer_id = self.attributes.get("multi_buffer_point_layer_id", None)
+            if layer_id:
+                candidate = QgsProject.instance().mapLayer(layer_id)
+                if candidate and candidate.isValid():
+                    self.features_layer = candidate
+                    log_message(
+                        f"Resolved points layer from QGIS project by ID: {layer_id}",
+                        tag="GeoE3",
+                        level=Qgis.Info,
+                    )
+
+            # 2) Fall back to layer name
+            if self.features_layer is None:
+                layer_name = self.attributes.get("multi_buffer_point_layer_name", None)
+                if layer_name:
+                    matches = QgsProject.instance().mapLayersByName(layer_name)
+                    if matches:
+                        self.features_layer = matches[0]
+                        log_message(
+                            f"Resolved points layer from QGIS project by name: {layer_name}",
+                            tag="GeoE3",
+                            level=Qgis.Info,
+                        )
+
+            if self.features_layer is None or not self.features_layer.isValid():
+                log_message(
+                    f"Points layer '{layer_path}' could not be loaded via OGR or found in the QGIS project. "
+                    "If you used a temporary QuickOSM layer, ensure it is still loaded in QGIS.",
+                    tag="GeoE3",
+                    level=Qgis.Critical,
+                )
+                raise Exception(
+                    f"Points layer not found. If you used a temporary QuickOSM layer, "
+                    "ensure it is still loaded in QGIS before running the workflow."
+                )
         mode = self.attributes.get("multi_buffer_travel_mode", "Walking")
         self.mode = None
         if mode == "Walking":
@@ -157,13 +198,18 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
             log_message(f"Using network layer at {self.road_network_layer_path}")
             if not self.road_network_layer_path:
                 log_message(
-                    f"Invalid network layer found in {self.road_network_layer_path}.",
+                    "Road network not configured. Please set the road network in the "
+                    "Road Network panel before running accessibility indicators.",
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                raise Exception("Invalid network layer found.")
+                raise Exception(
+                    "Road network not configured. Please set the road network in the "
+                    "Road Network panel before running accessibility indicators."
+                )
         log_message("Multi Buffer Distances Native Workflow initialized")
         self.workflow_name = "multi_buffer_point"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)
@@ -430,10 +476,18 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
             road_network_layer = QgsVectorLayer(self.road_network_layer_path, "network", "ogr")
             if not road_network_layer.isValid():
                 log_message(
-                    f"ERROR: Cannot load road network from {self.road_network_layer_path}",
+                    f"Road network layer could not be loaded from '{self.road_network_layer_path}'. "
+                    "If this was a temporary layer (e.g. from QuickOSM), it no longer exists in this session. "
+                    "Please reload it in QGIS or replace it with a file-based layer (GeoPackage or shapefile) "
+                    "in the Road Network panel.",
+                    tag="GeoE3",
                     level=Qgis.Critical,
                 )
-                return None
+                raise Exception(
+                    "Road network layer could not be loaded. "
+                    "If you used a temporary or QuickOSM layer in a previous session, it no longer exists. "
+                    "Please reload it in QGIS or replace it with a saved file in the Road Network panel."
+                )
             road_crs = road_network_layer.crs()
             log_message(
                 f"Area {area_index}: Road network CRS: {road_crs.authid()}, Target CRS: {self.target_crs.authid()}",

@@ -1,0 +1,22 @@
+@startuml
+!include kartoza.iuml
+title ACLED conflict impact processor — activity
+start
+:Load ACLED CSV export;
+:Parse lat/lon → point layer
+in target CRS;
+:Score each event by type
+(riots, protests, violence…)
+from ACLED mapping table;
+while (More study areas?) is (yes)
+  :Filter events to area;
+  :Buffer each event by
+  mapped impact distance;
+  :Cells in any buffer get
+  max event score (0–5 inverted:
+  more conflict → lower enablement);
+endwhile (no)
+:Write to grid column;
+:Rasterize + VRT + QML;
+stop
+@enduml

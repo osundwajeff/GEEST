@@ -1,0 +1,29 @@
+@startuml
+!include kartoza.iuml
+title Buffer & isochrone processor family — activity
+start
+:Load point layer (facilities);
+if (Which processor?) then (single buffer / street lights)
+  :Buffer points by configured
+  distance (m);
+  :Cells inside buffer → 5,
+  outside → 0;
+else (multi-buffer)
+  if (Routing provider?) then (native)
+    :QGIS native:serviceareafromlayer
+    over road network for each
+    distance band (≤ 5);
+    :Concave hulls (α = 0.3)
+    → nested isochrones;
+  else (ORS)
+    :OpenRouteService isochrones API
+    per point (walk / drive / cycle);
+  endif
+  :Score cells by innermost band:
+  d1→5, d2→4, d3→3, d4→2, d5→1,
+  outside→0;
+endif
+:write_buffer_values_to_grid();
+:Rasterize + VRT + QML;
+stop
+@enduml

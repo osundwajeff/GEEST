@@ -1,0 +1,19 @@
+@startuml
+!include kartoza.iuml
+title Polygon classification family — activity
+start
+:Load polygon layer
+(wards / zones with class field);
+:Read class → score mapping
+(safety perception 0–100,
+or generic class values);
+while (More study areas?) is (yes)
+  :Filter polygons to area;
+  :For each polygon:
+  value field = mapped score
+  scaled to 0–5;
+  :Rasterize value field;
+endwhile (no)
+:Write to grid column + VRT + QML;
+stop
+@enduml

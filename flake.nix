@@ -2,15 +2,17 @@
 # SPDX-License-Identifier: MIT
 {
   description = "NixOS developer environment for QGIS plugins.";
-  inputs.qgis-upstream.url = "github:qgis/qgis";
-  inputs.geospatial.url = "github:imincik/geospatial-nix.repo";
-  inputs.nixpkgs.follows = "geospatial/nixpkgs";
+  # QGIS comes straight from nixpkgs: `qgis` tracks the latest release line
+  # (4.x) and `qgis-ltr` the long-term release (3.44.x).
+  # Pinned to the 2026-06-15 nixos-unstable revision — the newest revision on
+  # which hydra built (and cached) qgis 4.0.3 and qgis-ltr 3.44.11; later
+  # revisions bump gdal to 3.13 which breaks the pdal build, so QGIS is
+  # uncached there and would compile from source on every machine.
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/b4f4a5cf27a0eb848c6212be746a0a718f3bb019";
 
   outputs =
     {
       self,
-      qgis-upstream,
-      geospatial,
       nixpkgs,
     }:
     let
@@ -24,28 +26,45 @@
       };
 
       extraPythonPackages = ps: [
-        ps.pyqtwebengine
         ps.jsonschema
         ps.debugpy
         ps.psutil
+        ps.h3
       ];
-      qgisWithExtras = geospatial.packages.${system}.qgis.override {
-        inherit extraPythonPackages;
+      # QGIS 4.x is Qt6/PyQt6; QGIS 3.44 LTR is Qt5/PyQt5 — each needs the
+      # matching WebEngine binding, so it is added per variant here rather
+      # than in the shared list above.
+      qgisWithExtras = pkgs.qgis.override {
+        extraPythonPackages = ps: (extraPythonPackages ps) ++ [ ps.pyqt6-webengine ];
       };
-      qgisLtrWithExtras = geospatial.packages.${system}.qgis-ltr.override {
-        inherit extraPythonPackages;
-      };
-      qgisMasterWithExtras = qgis-upstream.packages.${system}.qgis.override {
-        inherit extraPythonPackages;
+      qgisLtrWithExtras = pkgs.qgis-ltr.override {
+        extraPythonPackages = ps: (extraPythonPackages ps) ++ [ ps.pyqtwebengine ];
       };
       postgresWithPostGIS = pkgs.postgresql.withPackages (ps: [ ps.postgis ]);
+      # Wrappers around scripts/run-docker-tests.sh (all logic lives in the
+      # dotfile script; these only bake in the QGIS major version argument).
+      mkDockerTestApp =
+        variant:
+        let
+          wrapper = pkgs.writeShellApplication {
+            name = "geoe3-docker-tests-${variant}";
+            runtimeInputs = [
+              pkgs.docker
+              pkgs.git
+            ];
+            text = ''exec "$PWD/scripts/run-docker-tests.sh" ${variant} "$@"'';
+          };
+        in
+        {
+          type = "app";
+          program = "${wrapper}/bin/geoe3-docker-tests-${variant}";
+        };
     in
     {
       packages.${system} = {
         default = qgisWithExtras;
         qgis = qgisWithExtras;
         qgis-ltr = qgisLtrWithExtras;
-        qgis-master = qgisMasterWithExtras;
         postgres = postgresWithPostGIS;
       };
 
@@ -66,14 +85,6 @@
             "${profileName}"
           ];
         };
-        qgis-master = {
-          type = "app";
-          program = "${qgisMasterWithExtras}/bin/qgis";
-          args = [
-            "--profile"
-            "${profileName}"
-          ];
-        };
         qgis_process = {
           type = "app";
           program = "${qgisWithExtras}/bin/qgis_process";
@@ -82,6 +93,10 @@
             "${profileName}"
           ];
         };
+        # Test suite in the official QGIS docker images (see scripts/run-docker-tests.sh)
+        test-qgis3 = mkDockerTestApp "3"; # QGIS 3.34 LTR (Qt5)
+        test-qgis4 = mkDockerTestApp "4"; # QGIS 4.x master (Qt6)
+        test-qgis = mkDockerTestApp "all"; # both
 
       };
 
@@ -105,8 +120,7 @@
           pkgs.gum # UX for TUIs
           pkgs.isort
           pkgs.jq
-          pkgs.libsForQt5.kcachegrind
-          pkgs.libsForQt5.qt5.qtpositioning
+          pkgs.kdePackages.kcachegrind
           pkgs.luaPackages.luacheck
           pkgs.markdownlint-cli
           pkgs.nixfmt-rfc-style
@@ -114,15 +128,21 @@
           pkgs.nixfmt-rfc-style
           pkgs.privoxy
           pkgs.pyprof2calltree # needed to covert cprofile call trees into a format kcachegrind can read
-          pkgs.python3
+          # SRS / document build chain (srs/build.sh)
+          pkgs.plantuml # UML diagrams -> SVG/PNG
+          pkgs.libreoffice # docx -> pdf conversion
+          pkgs.lato # Kartoza document typeface
           # Python development essentials
           pkgs.pyright
-          pkgs.qt5.full # so we get designer
-          pkgs.qt5.qtbase
-          pkgs.qt5.qtlocation
-          pkgs.qt5.qtquickcontrols2
-          pkgs.qt5.qtsvg
-          pkgs.qt5.qttools
+          # Qt 6 tooling to match QGIS 4.x (mixing Qt5 and Qt6 packages in one
+          # shell is rejected by the nixpkgs Qt hook). Designer/linguist come
+          # from qttools; quickcontrols2 now lives inside qtdeclarative.
+          pkgs.kdePackages.qtbase
+          pkgs.kdePackages.qtdeclarative
+          pkgs.kdePackages.qtlocation
+          pkgs.kdePackages.qtpositioning
+          pkgs.kdePackages.qtsvg
+          pkgs.kdePackages.qttools
           pkgs.rpl
           pkgs.shellcheck
           pkgs.shfmt
@@ -132,15 +152,15 @@
           pkgs.yamlfmt
           pkgs.yamllint
           postgresWithPostGIS
-          pkgs.nodePackages.cspell
+          pkgs.cspell
           (pkgs.python3.withPackages (ps: [
             # Add these for SQL linting/formatting:
             ps.black
             ps.click # needed by black
             ps.debugpy
-            ps.docformatter
             ps.flake8
             ps.gdal
+            ps.h3
             ps.httpx
             ps.jsonschema
             ps.matplotlib
@@ -149,9 +169,10 @@
             ps.odfpy
             ps.pandas
             ps.paver
+            ps.pillow # SRS cover compositing and image sizing
             ps.pip
             ps.psutil
-            ps.pyqt5-stubs
+            ps.python-docx # SRS written directly into the Word template
             ps.pytest
             ps.pytest-qt
             ps.python
@@ -163,7 +184,6 @@
             ps.typer
             ps.wheel
             # For autocompletion in vscode
-            ps.pyqt5-stubs
 
             # This executes some shell code to initialize a venv in $venvDir before
             # dropping into the shell
@@ -171,16 +191,28 @@
             ps.virtualenv
             # Those are dependencies that we would like to use from nixpkgs, which will
             # add them to PYTHONPATH and thus make them accessible from within the venv.
-            ps.pyqtwebengine
+            # PyQt6 to match QGIS 4.x (Qt6).
+            ps.pyqt6
+            ps.pyqt6-webengine
           ]))
 
         ];
         shellHook = ''
             unset SOURCE_DATE_EPOCH
 
+            # Recreate the .venv whenever the nix python it was built from
+            # changes: a stale venv points into a store path that no longer
+            # matches and pip then tries to write into the read-only store.
+            PY_INTERP="$(command -v python3)"
+            if [ -d ".venv" ] && [ "$(cat .venv/.nix-python 2>/dev/null)" != "$PY_INTERP" ]; then
+              echo "Python toolchain changed — recreating .venv"
+              rm -rf .venv
+            fi
+
             # Create a virtual environment in .venv if it doesn't exist
              if [ ! -d ".venv" ]; then
               python -m venv .venv
+              echo "$PY_INTERP" > .venv/.nix-python
             fi
 
             # Activate the virtual environment
@@ -216,8 +248,7 @@
           # Add PyQt and QGIS to python path for neovim
           pythonWithPackages="${
             pkgs.python3.withPackages (ps: [
-              ps.pyqt5-stubs
-              ps.pyqtwebengine
+              ps.pyqt6-webengine
             ])
           }"
           export PYTHONPATH="$pythonWithPackages/lib/python*/site-packages:${qgisWithExtras}/share/qgis/python:$PYTHONPATH"

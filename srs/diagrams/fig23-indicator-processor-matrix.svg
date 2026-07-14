@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="802" height="826" viewBox="0 0 802 826" font-family="Lato">
+<rect width="802" height="826" fill="#FFFFFF"/>
+<rect x="34" y="154" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="206" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="258" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="310" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="362" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="414" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="466" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="518" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="570" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="622" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="674" width="760" height="26" fill="#F5F5F2"/>
+<rect x="34" y="726" width="760" height="26" fill="#F5F5F2"/>
+<rect x="8" y="128" width="18" height="104" fill="#54A2CC" rx="4"/>
+<text x="21.0" y="180.0" font-size="10.5" fill="#FFFFFF" text-anchor="middle" font-weight="bold" transform="rotate(-90 21.0 180.0)">CONTEXTUAL</text>
+<rect x="8" y="232" width="18" height="234" fill="#EEB348" rx="4"/>
+<text x="21.0" y="349.0" font-size="10.5" fill="#FFFFFF" text-anchor="middle" font-weight="bold" transform="rotate(-90 21.0 349.0)">ACCESSIBILITY</text>
+<line x1="8" y1="232" x2="794" y2="232" stroke="#D1D1D1" stroke-width="1"/>
+<rect x="8" y="466" width="18" height="286" fill="#676869" rx="4"/>
+<text x="21.0" y="609.0" font-size="10.5" fill="#FFFFFF" text-anchor="middle" font-weight="bold" transform="rotate(-90 21.0 609.0)">PLACE CHARACTERIZATION</text>
+<line x1="8" y1="466" x2="794" y2="466" stroke="#D1D1D1" stroke-width="1"/>
+<text x="299.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 299.0 120)">Index score</text>
+<text x="329.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 329.0 120)">Contextual index</text>
+<text x="359.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 359.0 120)">EPLEX score</text>
+<text x="389.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 389.0 120)">Index + GHSL</text>
+<text x="419.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 419.0 120)">Index + Ookla</text>
+<text x="449.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 449.0 120)">Points per cell</text>
+<text x="479.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 479.0 120)">Polylines per cell</text>
+<text x="509.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 509.0 120)">Polygons per cell</text>
+<text x="539.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 539.0 120)">OSM transport</text>
+<text x="569.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 569.0 120)">Single buffer</text>
+<text x="599.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 599.0 120)">Multi-buffer / isochrone</text>
+<text x="629.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 629.0 120)">Street lights</text>
+<text x="659.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 659.0 120)">Hazard raster</text>
+<text x="689.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 689.0 120)">Night-time lights</text>
+<text x="719.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 719.0 120)">Classify polygons</text>
+<text x="749.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 749.0 120)">Classify safety</text>
+<text x="779.0" y="120" font-size="11.5" fill="#383939" text-anchor="start" transform="rotate(-45 779.0 120)">ACLED CSV</text>
+<line x1="434" y1="124" x2="434" y2="752" stroke="#D1D1D1" stroke-width="1"/>
+<line x1="554" y1="124" x2="554" y2="752" stroke="#D1D1D1" stroke-width="1"/>
+<line x1="644" y1="124" x2="644" y2="752" stroke="#D1D1D1" stroke-width="1"/>
+<line x1="704" y1="124" x2="704" y2="752" stroke="#D1D1D1" stroke-width="1"/>
+<line x1="764" y1="124" x2="764" y2="752" stroke="#D1D1D1" stroke-width="1"/>
+<text x="272" y="145.0" font-size="12" fill="#383939" text-anchor="end">EPLEX score</text>
+<circle cx="359.0" cy="141.0" r="7" fill="#54A2CC"/>
+<text x="272" y="171.0" font-size="12" fill="#383939" text-anchor="end">WBL Workplace Index</text>
+<circle cx="329.0" cy="167.0" r="7" fill="#54A2CC"/>
+<text x="272" y="197.0" font-size="12" fill="#383939" text-anchor="end">WBL Pay &amp; Parenthood Index</text>
+<circle cx="329.0" cy="193.0" r="7" fill="#54A2CC"/>
+<text x="272" y="223.0" font-size="12" fill="#383939" text-anchor="end">WBL Entrepreneurship Index</text>
+<circle cx="329.0" cy="219.0" r="7" fill="#54A2CC"/>
+<text x="272" y="249.0" font-size="12" fill="#383939" text-anchor="end">Kindergartens / childcare</text>
+<circle cx="599.0" cy="245.0" r="7" fill="#54A2CC"/>
+<text x="272" y="275.0" font-size="12" fill="#383939" text-anchor="end">Primary schools</text>
+<circle cx="599.0" cy="271.0" r="7" fill="#54A2CC"/>
+<text x="272" y="301.0" font-size="12" fill="#383939" text-anchor="end">Groceries</text>
+<circle cx="599.0" cy="297.0" r="7" fill="#54A2CC"/>
+<text x="272" y="327.0" font-size="12" fill="#383939" text-anchor="end">Pharmacies</text>
+<circle cx="599.0" cy="323.0" r="7" fill="#54A2CC"/>
+<text x="272" y="353.0" font-size="12" fill="#383939" text-anchor="end">Green spaces</text>
+<circle cx="599.0" cy="349.0" r="7" fill="#54A2CC"/>
+<text x="272" y="379.0" font-size="12" fill="#383939" text-anchor="end">Public transport stops</text>
+<circle cx="599.0" cy="375.0" r="7" fill="#54A2CC"/>
+<text x="272" y="405.0" font-size="12" fill="#383939" text-anchor="end">Hospitals &amp; clinics</text>
+<circle cx="599.0" cy="401.0" r="7" fill="#54A2CC"/>
+<text x="272" y="431.0" font-size="12" fill="#383939" text-anchor="end">Universities &amp; tech schools</text>
+<circle cx="599.0" cy="427.0" r="7" fill="#54A2CC"/>
+<text x="272" y="457.0" font-size="12" fill="#383939" text-anchor="end">Banks &amp; financial facilities</text>
+<circle cx="599.0" cy="453.0" r="7" fill="#54A2CC"/>
+<text x="272" y="483.0" font-size="12" fill="#383939" text-anchor="end">Active transport network</text>
+<circle cx="479.0" cy="479.0" r="7" fill="#54A2CC"/>
+<circle cx="539.0" cy="479.0" r="7" fill="#54A2CC"/>
+<text x="272" y="509.0" font-size="12" fill="#383939" text-anchor="end">Street / night-time lights</text>
+<circle cx="299.0" cy="505.0" r="7" fill="#54A2CC"/>
+<circle cx="629.0" cy="505.0" r="7" fill="#54A2CC"/>
+<circle cx="689.0" cy="505.0" r="7" fill="#54A2CC"/>
+<circle cx="749.0" cy="505.0" r="7" fill="#54A2CC"/>
+<text x="272" y="535.0" font-size="12" fill="#383939" text-anchor="end">ACLED conflict events</text>
+<circle cx="569.0" cy="531.0" r="7" fill="#54A2CC"/>
+<circle cx="779.0" cy="531.0" r="7" fill="#54A2CC"/>
+<text x="272" y="561.0" font-size="12" fill="#383939" text-anchor="end">Labour force with degrees</text>
+<circle cx="299.0" cy="557.0" r="7" fill="#54A2CC"/>
+<circle cx="389.0" cy="557.0" r="7" fill="#54A2CC"/>
+<circle cx="509.0" cy="557.0" r="7" fill="#54A2CC"/>
+<circle cx="719.0" cy="557.0" r="7" fill="#54A2CC"/>
+<text x="272" y="587.0" font-size="12" fill="#383939" text-anchor="end">Internet use (% population)</text>
+<circle cx="419.0" cy="583.0" r="7" fill="#54A2CC"/>
+<circle cx="719.0" cy="583.0" r="7" fill="#54A2CC"/>
+<text x="272" y="613.0" font-size="12" fill="#383939" text-anchor="end">Fire hazard</text>
+<circle cx="659.0" cy="609.0" r="7" fill="#54A2CC"/>
+<text x="272" y="639.0" font-size="12" fill="#383939" text-anchor="end">Flood hazard</text>
+<circle cx="659.0" cy="635.0" r="7" fill="#54A2CC"/>
+<text x="272" y="665.0" font-size="12" fill="#383939" text-anchor="end">Landslide hazard</text>
+<circle cx="659.0" cy="661.0" r="7" fill="#54A2CC"/>
+<text x="272" y="691.0" font-size="12" fill="#383939" text-anchor="end">Tropical cyclone hazard</text>
+<circle cx="659.0" cy="687.0" r="7" fill="#54A2CC"/>
+<text x="272" y="717.0" font-size="12" fill="#383939" text-anchor="end">Drought hazard</text>
+<circle cx="659.0" cy="713.0" r="7" fill="#54A2CC"/>
+<text x="272" y="743.0" font-size="12" fill="#383939" text-anchor="end">Water &amp; sanitation facilities</text>
+<circle cx="569.0" cy="739.0" r="7" fill="#54A2CC"/>
+<line x1="34" y1="128" x2="794" y2="128" stroke="#383939" stroke-width="1"/>
+<line x1="34" y1="752" x2="794" y2="752" stroke="#383939" stroke-width="1"/>
+<rect x="285" y="758" width="148" height="18" fill="#EAF3FA" rx="4"/>
+<text x="359.0" y="771.0" font-size="10.5" fill="#676869" text-anchor="middle" font-weight="bold">Index scores</text>
+<rect x="435" y="758" width="118" height="18" fill="#FCF3E0" rx="4"/>
+<text x="494.0" y="771.0" font-size="10.5" fill="#676869" text-anchor="middle" font-weight="bold">Per-cell</text>
+<rect x="555" y="758" width="88" height="18" fill="#EAF3FA" rx="4"/>
+<text x="599.0" y="771.0" font-size="10.5" fill="#676869" text-anchor="middle" font-weight="bold">Buffers</text>
+<rect x="645" y="758" width="58" height="18" fill="#FCF3E0" rx="4"/>
+<text x="674.0" y="771.0" font-size="10.5" fill="#676869" text-anchor="middle" font-weight="bold">Rasters</text>
+<rect x="705" y="758" width="58" height="18" fill="#EAF3FA" rx="4"/>
+<text x="734.0" y="771.0" font-size="10.5" fill="#676869" text-anchor="middle" font-weight="bold">Classify</text>
+<rect x="765" y="758" width="28" height="18" fill="#FCF3E0" rx="4"/>
+<text x="779.0" y="771.0" font-size="10.5" fill="#676869" text-anchor="middle" font-weight="bold">Conflict</text>
+<circle cx="42" cy="796" r="7" fill="#54A2CC"/>
+<text x="56" y="800" font-size="11.5" fill="#676869" text-anchor="start">processor available for this indicator (model.json use_* flag) — families group the chapter 6 sections</text>
+</svg>

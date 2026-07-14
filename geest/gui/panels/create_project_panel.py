@@ -6,8 +6,8 @@ This module contains functionality for create project panel.
 
 import json
 import os
-import sqlite3
 import shutil
+import sqlite3
 import time
 import traceback
 
@@ -73,6 +73,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         self.queue_manager = WorkflowQueueManager(pool_size=1)
 
         self.working_dir = ""
+        self.study_area_task = None
         self.settings = QSettings()  # Initialize QSettings to store and retrieve settings
         self._last_map_refresh_ts = 0.0
         self._incomplete_setup_warned = False
@@ -82,9 +83,16 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         self.initUI()
 
     def _should_skip_map_refresh(self) -> bool:
-        """Rate-limit map refresh attempts while study area is writing."""
+        """Rate-limit map refresh attempts while study area is writing.
+
+        While the study area task's unified writer is active every map
+        reload opens fresh read connections against a GeoPackage under
+        heavy write load, so refreshes are spaced well apart; once the
+        task has finished the usual snappy interval applies.
+        """
+        interval = 5.0 if getattr(self, "study_area_task", None) is not None else 0.5
         now = time.monotonic()
-        if now - self._last_map_refresh_ts < 0.5:
+        if now - self._last_map_refresh_ts < interval:
             return True
         self._last_map_refresh_ts = now
         return False
@@ -149,7 +157,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             self.spatial_scale_changed("local")
         else:
             self.spatial_scale_changed("national")
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         if hasattr(self.layer_combo, "setAllowEmptyLayer"):
             self.layer_combo.setAllowEmptyLayer(True)
         # Regional scale uses H3 hexagonal grids (L6 resolution)
@@ -324,9 +332,9 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
     def load_boundary(self):
         """Load a boundary layer from a file."""
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
-        if file_dialog.exec_():
+        if file_dialog.exec():
             file_path = file_dialog.selectedFiles()[0]
             layer = QgsVectorLayer(file_path, "Boundary", "ogr")
             if not layer.isValid():
@@ -453,10 +461,10 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
                         f"H3 resolution {h3_resolution} can be very computationally expensive and may take "
                         "a long time to process.\n\nDo you want to continue?"
                     ),
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
                 )
-                if reply != QMessageBox.Yes:
+                if reply != QMessageBox.StandardButton.Yes:
                     self.enable_widgets()
                     return
 
@@ -470,6 +478,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
                 analysis_scale=analysis_scale,
                 h3_resolution=h3_resolution,
             )
+            self.study_area_task = processor
             # Hook up the QTask feedback signal to the progress bar
             # Measure overall task progress from the task object itself
             processor.progressChanged.connect(self.progress_updated)
@@ -664,25 +673,41 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
 
     def on_task_terminated(self):
         """Slot to be called when the study area processing task is terminated (aborted or failed)."""
+        task = self.study_area_task
+        reason = "Task was interrupted or canceled."
+        if task is not None and getattr(task, "termination_detail", ""):
+            reason = task.termination_detail
+
         log_message(
-            "Study area processing was terminated.",
+            f"Study area processing was terminated. Reason: {reason}",
             tag="GeoE3",
             level=Qgis.Warning,
         )
+
+        self.enable_widgets()
+
         self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Aborted — fix settings, then click > to retry")
+        self.progress_bar.setFormat("Aborted - Could not prepare study area.")
+        self.processing_info_label.setText(f"Main error: {reason} Check settings, then click > to retry.")
+        self.processing_info_label.setVisible(True)
+        self.processing_info_label.setEnabled(True)
         self.child_progress_bar.setVisible(False)
-        self.enable_widgets()
+        self.study_area_task = None
 
     def on_task_completed(self):
         """Slot to be called when the task completes successfully."""
+        self.study_area_task = None
         log_message(
             "*** Study area processing completed successfully. ***",
             tag="GeoE3",
             level=Qgis.Info,
         )
+        # Final refresh now that the unified writer has stopped — during the
+        # run refreshes are heavily rate-limited (_should_skip_map_refresh).
+        self._last_map_refresh_ts = 0.0
+        self.add_bboxes_to_map()
 
         # Use child progress bar for report generation (main bar stays at 100%)
         self.child_progress_bar.setMinimum(0)
@@ -743,11 +768,11 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             self,
             "GHSL Download Failed",
             error_message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             log_message("User chose to continue without GHSL data", tag="GeoE3", level=Qgis.Info)
             processor.set_ghsl_user_response(continue_without=True)
         else:
@@ -791,9 +816,9 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         panel_width = self.description.rect().width()
 
         title_size = int(linear_interpolation(panel_width, 16, 20, 400, 800))
-        subtitle_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
-        content_size = int(linear_interpolation(panel_width, 10, 14, 400, 800))
-        control_size = int(linear_interpolation(panel_width, 11, 15, 400, 800))
+        subtitle_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
+        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
 
         self.label_2.setFont(QFont("Arial", title_size))
 
@@ -1008,6 +1033,22 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             gpkg_layer_path = f"{gpkg_path}|layername={layer_name}"
             layer = QgsVectorLayer(gpkg_layer_path, layer_name, "ogr")
 
+            # On Windows, the GeoPackage may be temporarily locked right after
+            # study area processing completes. Retry a few times before giving up.
+            if not layer.isValid():
+                import time as _time
+
+                for attempt in range(3):
+                    log_message(
+                        f"Layer '{layer_name}' not valid (attempt {attempt + 1}/3), retrying...",
+                        tag="GeoE3",
+                        level=Qgis.Info,
+                    )
+                    _time.sleep(1)
+                    layer = QgsVectorLayer(gpkg_layer_path, layer_name, "ogr")
+                    if layer.isValid():
+                        break
+
             if not layer.isValid():
                 log_message(
                     f"Failed to load '{layer_name}' layer from GeoPackage.",
@@ -1037,6 +1078,12 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
                 log_message(f"Refreshing existing layer: {existing_layer.name()}")
                 try:
                     existing_layer.reload()
+                    # Force the OGR provider to reload data and recompute extent.
+                    # On Windows, gpkg_contents extent can be stale after study area
+                    # creation because the WAL checkpoint may not propagate to QGIS's
+                    # already-open provider connection.
+                    existing_layer.dataProvider().reloadData()
+                    existing_layer.updateExtents()
                 except Exception as e:
                     # Skip refresh if layer is locked by background write operation
                     log_message(

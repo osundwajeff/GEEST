@@ -1,0 +1,32 @@
+@startuml
+!include kartoza.iuml
+title Study area creation — StudyAreaProcessingTask
+start
+:Save study area bounding box;
+:Enable WAL mode on GeoPackage;
+:Create status tracking table;
+:Download & process GHSL settlements;
+if (GHSL download failed?) then (yes)
+  if (User continues without?) then (no)
+    :Abort task;
+    stop
+  endif
+endif
+:Pre-create all study area layers
+(avoids schema races);
+while (More boundary features?) is (yes)
+  :Normalise area name;
+  :Fix invalid geometry (MakeValid);
+  :Chunk bbox into processing tiles;
+  :Generate grid cells per chunk
+  (square grid or H3 hexagons)
+  via UnifiedWriterThread;
+  :Write clip polygon + raster mask;
+endwhile (no)
+:Add model columns to study_area_grid;
+:Build combined mask VRT;
+:Verify GeoPackage health
+(gpkg_doctor self-heal);
+:Generate study area report (PDF);
+stop
+@enduml

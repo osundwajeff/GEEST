@@ -81,7 +81,7 @@ repos:
     hooks:
       - id: cspell
         name: "🔤 cspell - Spell checker for Markdown"
-        entry: cspell --config=.cspell.json --no-progress --no-summary
+        entry: cspell --config=.cspell.json --no-progress --no-summary --no-must-find-files
         language: system
         types: [markdown]
         stages: [pre-commit]

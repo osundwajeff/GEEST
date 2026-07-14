@@ -1,0 +1,48 @@
+# -*- coding: utf-8 -*-
+"""Construct the full GeoE3 dock (all panels) headless.
+
+Every QGIS 4 / PyQt6 startup crash so far lived in panel constructor code
+(unscoped enums, int-to-enum coercion). Building the complete dock in the
+suite executes all of those paths on both the PyQt5 and PyQt6 images, so
+the next porting regression fails a test instead of failing plugin load.
+"""
+
+import unittest
+
+from utilities_for_testing import get_qgis_app
+
+QGIS_APP, CANVAS, IFACE, PARENT = get_qgis_app()
+
+from qgis.PyQt.QtCore import Qt  # noqa: E402
+
+from geest import _dock_area_to_int, _to_dock_widget_area  # noqa: E402
+from geest.gui.geoe3_dock import GeoE3Dock  # noqa: E402
+from geest.utilities import resources_path  # noqa: E402
+
+
+class TestGeoE3DockConstruction(unittest.TestCase):
+    def test_dock_constructs_with_all_panels(self):
+        """The dock (and thereby every panel constructor) builds cleanly."""
+        dock = GeoE3Dock(parent=PARENT, json_file=resources_path("resources", "model.json"))
+        self.assertGreater(dock.stacked_widget.count(), 0)
+
+    def test_dock_area_to_int_portable(self):
+        """Enum → int works on PyQt5 sip enums and PyQt6 pure Flags alike."""
+        self.assertEqual(_dock_area_to_int(Qt.DockWidgetArea.LeftDockWidgetArea), 1)
+        self.assertEqual(_dock_area_to_int(Qt.DockWidgetArea.RightDockWidgetArea), 2)
+
+    def test_dock_widget_area_coercion(self):
+        """QSettings ints (and junk) coerce to a valid Qt.DockWidgetArea."""
+        right = Qt.DockWidgetArea.RightDockWidgetArea
+        left = Qt.DockWidgetArea.LeftDockWidgetArea
+        self.assertEqual(_to_dock_widget_area(1), left)
+        self.assertEqual(_to_dock_widget_area(2), right)
+        self.assertEqual(_to_dock_widget_area(0), right)  # NoDockWidgetArea
+        self.assertEqual(_to_dock_widget_area(999), right)
+        self.assertEqual(_to_dock_widget_area(None), right)
+        self.assertEqual(_to_dock_widget_area("2"), right)
+        self.assertEqual(_to_dock_widget_area("junk"), right)
+
+
+if __name__ == "__main__":
+    unittest.main()

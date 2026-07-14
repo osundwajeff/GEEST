@@ -40,7 +40,7 @@ class DownloadTaskControls:
         self.spinner_movie.setScaledSize(QSize(24, 24))
         self.spinner_label.setMovie(self.spinner_movie)
         self.spinner_label.setVisible(False)
-        self.spinner_label.setAlignment(Qt.AlignVCenter)
+        self.spinner_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(self.button)
         layout.addWidget(self.spinner_label)
@@ -122,6 +122,16 @@ class DownloadTaskControls:
             enabled=True,
             style="background-color: #ffffcc; padding: 5px 10px;",
             tooltip="Download was cancelled. Click to retry.",
+            stop_spinner=True,
+        )
+
+    def set_no_data(self) -> None:
+        """Set successful download state when source has no features."""
+        self._set_state(
+            text="No Data",
+            enabled=True,
+            style="background-color: #fff3cd; padding: 5px 10px;",
+            tooltip="Download completed, but no features were found for the selected area.",
             stop_spinner=True,
         )
 

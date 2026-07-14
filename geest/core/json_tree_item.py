@@ -553,6 +553,16 @@ class JsonTreeItem:
             if "Error" in data.get("result", "") or "Failed" in data.get("result", ""):
                 return "Workflow failed"
 
+            # Handle stale excluded markers from previous runs when the indicator
+            # has since been re-enabled (e.g. via Use checkbox in factor dialog).
+            if (
+                self.isIndicator()
+                and data.get("result", "") == "Excluded from analysis"
+                and analysis_mode != "Do Not Use"
+                and float(data.get("factor_weighting", 0.0) or 0.0) > 0.0
+            ):
+                return "Configured, not run"
+
             # Check item configuration status
             if "Do Not Use" in analysis_mode and data.get("factor_weighting", 0.0) > 0:
                 return "Required and not configured"
@@ -571,6 +581,20 @@ class JsonTreeItem:
             ):
                 return "Not configured (optional)"
 
+            # CSV-based indicators are configured when a CSV source path is present.
+            if self.isIndicator() and analysis_mode == "use_csv_to_point_layer":
+                csv_file_path = str(data.get("use_csv_to_point_layer_csv_file", "") or "").strip()
+                if not csv_file_path:
+                    return "Not configured (optional)"
+
+            # Active transport can use a dedicated layer source or fallback road network path.
+            if self.isIndicator() and analysis_mode == "use_osm_transport_polyline_per_cell":
+                transport_layer_source = str(data.get("osm_transport_polyline_per_cell_layer_source", "") or "").strip()
+                transport_shapefile = str(data.get("osm_transport_polyline_per_cell_shapefile", "") or "").strip()
+                road_network_layer_path = str(data.get("road_network_layer_path", "") or "").strip()
+                if not any([transport_layer_source, transport_shapefile, road_network_layer_path]):
+                    return "Not configured (optional)"
+
             # Test for algs requiring vector inputs
             if self.isIndicator() and analysis_mode not in [
                 "use_index_score",
@@ -580,6 +604,8 @@ class JsonTreeItem:
                 "use_eplex_score",  # EPLex indicators don't use vector layers
                 "use_index_score_with_ghsl",  # GHSL indicators use raster, not vector
                 "use_nighttime_lights",  # Nighttime lights use raster, not vector
+                "use_csv_to_point_layer",  # CSV indicators use CSV file key, not vector layer keys
+                "use_osm_transport_polyline_per_cell",  # OSM transport can use dedicated fallback keys
             ]:
                 if not data.get(qgis_layer_source_key, False) and not data.get(qgis_layer_shapefile_key, False):
                     return "Not configured (optional)"
@@ -837,7 +863,7 @@ class JsonTreeItem:
                 log_message(f"Updating weighting for {indicator_guid} to {new_weighting}")
                 indicator_item.setData(2, f"{new_weighting:.2f}")  # noqa E231
                 # weighting references the level above (i.e. factor)
-                indicator_item.attributes()["factor_weighting"] = new_weighting
+                indicator_item.setAttribute("factor_weighting", new_weighting)
             else:
                 # Log if the indicator name is not found
                 log_message(
@@ -859,7 +885,7 @@ class JsonTreeItem:
             if factor_item:
                 factor_item.setData(2, f"{new_weighting:.2f}")  # noqa E231
                 # weighting references the level above (i.e. dimension)
-                factor_item.attributes()["dimension_weighting"] = new_weighting
+                factor_item.setAttribute("dimension_weighting", new_weighting)
 
             else:
                 # Log if the factor name is not found
@@ -882,7 +908,7 @@ class JsonTreeItem:
             if dimension_item:
                 dimension_item.setData(2, f"{new_weighting:.2f}")  # noqa E231
                 # weighting references the level above (i.e. analysis)
-                dimension_item.attributes()["analysis_weighting"] = new_weighting
+                dimension_item.setAttribute("analysis_weighting", new_weighting)
 
             else:
                 # Log if the factor name is not found

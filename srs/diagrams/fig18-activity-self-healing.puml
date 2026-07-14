@@ -1,0 +1,30 @@
+@startuml
+!include kartoza.iuml
+title GeoPackage self-healing (gpkg_doctor) — activity
+start
+:PRAGMA quick_check;
+if (Healthy?) then (yes)
+  stop
+endif
+:Checkpoint WAL journal;
+if (Healthy now?) then (yes)
+  stop
+endif
+while (Schema error "already exists"?) is (yes)
+  :Byte-rename last duplicate schema
+  object (same-length name, in place);
+endwhile (no)
+:PRAGMA integrity_check;
+if (Structurally sound?) then (yes)
+  :Delete renamed duplicate rows
+  via writable_schema (in place,
+  no file copy);
+else (btree damage)
+  :VACUUM INTO rebuilt file;
+  :Atomic swap; keep original as
+  .corrupt-<timestamp>.bak;
+  :DROP renamed duplicates;
+endif
+:Final quick_check → report;
+stop
+@enduml

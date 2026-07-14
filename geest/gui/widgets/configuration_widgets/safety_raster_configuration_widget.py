@@ -72,7 +72,7 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
             # --- Informational class table ---
             self.mapping_table_label = QLabel()
             self.mapping_table_label.setWordWrap(True)
-            self.mapping_table_label.setTextFormat(Qt.RichText)
+            self.mapping_table_label.setTextFormat(Qt.TextFormat.RichText)
             self.mapping_table_label.setText(self._build_table_html(current_mode))
             self.internal_layout.addWidget(self.mapping_table_label)
         except Exception as e:

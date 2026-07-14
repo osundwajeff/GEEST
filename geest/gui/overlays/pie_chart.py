@@ -7,7 +7,7 @@ This module contains functionality for pie chart.
 import math
 
 from qgis.gui import QgsMapCanvasItem
-from qgis.PyQt.QtCore import QRectF, Qt
+from qgis.PyQt.QtCore import QRectF, QSettings, Qt
 from qgis.PyQt.QtGui import QColor, QFont, QImage, QPainter
 
 from geest.core.settings import setting
@@ -70,7 +70,7 @@ class PieChartItem(QgsMapCanvasItem):
         if not pie_data:
             return
         diameter = 100
-        image = QImage(diameter, diameter, QImage.Format_ARGB32)
+        image = QImage(diameter, diameter, QImage.Format.Format_ARGB32)
         image.fill(Qt.GlobalColor.white)
 
         chart_x = painter.device().width() - (diameter + 20)

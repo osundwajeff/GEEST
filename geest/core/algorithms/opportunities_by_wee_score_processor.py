@@ -219,10 +219,10 @@ class OpportunitiesByWeeScoreProcessingTask(QgsTask):
             'WHERE "opportunities_mask" IS NOT NULL'
         )
         ds.ExecuteSQL(sql)
-        try:
-            ds.ExecuteSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-        except Exception:  # nosec B110
-            pass
+        # Serialised process-wide via gpkg_doctor's checkpoint lock.
+        from geest.core.gpkg_doctor import checkpoint_dataset
+
+        checkpoint_dataset(ds)
         ds = None
         log_message("Updated geoe3_masked grid column from geoe3 where opportunities_mask is set")
 

@@ -142,6 +142,30 @@ class IndexScoreWithGHSLWorkflow(WorkflowBase):
                 level=Qgis.Warning,
             )
 
+        # Set score 0 for all grid cells NOT covered by GHSL settlements.
+        # Cells with no GHSL intersection stay NULL after the spatial join;
+        # NULL → nodata in the raster → transparent, which is wrong.
+        # "No settlement data" means no enablement → score 0 (not enabling).
+        ds = None
+        try:
+            from geest.core.grid_column_utils import _open_gpkg_for_write, _execute_sql_with_retry
+            from geest.core.grid_column_utils import _sanitize_column_name
+
+            sanitized = _sanitize_column_name(self.layer_id)
+            ds = _open_gpkg_for_write(self.gpkg_path)
+            if ds:
+                sql = (
+                    f"UPDATE study_area_grid "  # nosec B608
+                    f'SET "{sanitized}" = 0 '
+                    f"WHERE area_name = '{area_name}' AND \"{sanitized}\" IS NULL"
+                )
+                _execute_sql_with_retry(ds, sql)
+                log_message(f"Set score 0 for non-GHSL cells in area {area_name}")
+        except Exception as e:
+            log_message(f"Could not set score 0 for non-GHSL cells: {e}", level=Qgis.Warning)
+        finally:
+            ds = None
+
         # Rasterize from grid column for VRT output
         output_path = os.path.join(
             self.workflow_directory,

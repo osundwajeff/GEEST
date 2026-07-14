@@ -11,16 +11,16 @@ import traceback
 from qgis import processing
 from qgis.core import (
     Qgis,
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
     QgsFeedback,
     QgsMapLayerProxyModel,
     QgsProject,
     QgsVectorLayer,
     QgsWkbTypes,
-    QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform,
 )
-from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal, pyqtSlot
-from qgis.PyQt.QtGui import QFont, QPixmap
+from qgis.PyQt.QtCore import QSettings, Qt, QUrl, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
 from qgis.PyQt.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
 from geest.core import WorkflowQueueManager
@@ -80,12 +80,12 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
             details: Optional detailed error information.
         """
         msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setIcon(QMessageBox.Icon.Critical)
         msg_box.setWindowTitle("Error")
         msg_box.setText(message)
         if details:
             msg_box.setDetailedText(details)
-        msg_box.exec_()
+        msg_box.exec()
         self.progress_bar.setVisible(False)
         self.child_progress_bar.setVisible(False)
         self.progress_bar.setMinimum(0)
@@ -188,11 +188,21 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         # self.folder_status_label.setPixmap(
         #     QPixmap(resources_path("resources", "icons", "failed.svg"))
         # )
-        self.road_layer_combo.setFilters(QgsMapLayerProxyModel.LineLayer)
+        self.road_layer_combo.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         self.road_layer_combo.currentIndexChanged.connect(self.emit_road_layer_change)
         self.road_layer_combo.currentIndexChanged.connect(self.update_road_layer_status)
         self.load_road_layer_button.clicked.connect(self.load_road_layer)
         self.download_active_transport_button.clicked.connect(self.download_active_transport_button_clicked)
+        self.description.setTextFormat(Qt.TextFormat.RichText)
+        self.description.linkActivated.connect(self.open_link_in_browser)
+        self.description6.setTextFormat(Qt.TextFormat.RichText)
+        self.description6.setText(
+            "Download a unified active transport network (roads + cycleways combined). "
+            "Please note that the OpenStreetMap servers can be busy at times. If your download fails, "
+            "either wait a little bit, then try to download again. Alternatively, you can get the data "
+            "manually from <a href='https://www.geofabrik.de/'>https://www.geofabrik.de/</a>."
+        )
+        self.description6.linkActivated.connect(self.open_link_in_browser)
 
         self.next_button.clicked.connect(self.on_next_button_clicked)
         self.previous_button.clicked.connect(self.on_previous_button_clicked)
@@ -206,6 +216,10 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
 
         # Start with next button disabled until a valid road layer is selected
         self._update_next_button_state()
+
+    def open_link_in_browser(self, url: str):
+        """Open the given URL in the user's default web browser using QDesktopServices."""
+        QDesktopServices.openUrl(QUrl(url))
 
     def update_road_layer_status(self):
         """Update status icon, tooltip, and auto-reproject if CRS mismatch detected.
@@ -268,7 +282,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
                 self.layer_status_label.setToolTip("Reprojecting layer, please wait...")
 
                 # Set waiting cursor to indicate processing
-                QApplication.setOverrideCursor(Qt.WaitCursor)
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                 QApplication.processEvents()  # Update UI to show red icon + tooltip
 
                 try:
@@ -476,10 +490,10 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         with a unique filename based on the original layer name.
         """
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
 
-        if not file_dialog.exec_():
+        if not file_dialog.exec():
             return
 
         file_path = file_dialog.selectedFiles()[0]
@@ -676,10 +690,10 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
     def load_reference_layer(self):
         """Load reference (admin boundary) layer from file."""
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilter("Shapefile (*.shp);;GeoPackage (*.gpkg)")
 
-        if not file_dialog.exec_():
+        if not file_dialog.exec():
             return
 
         file_path = file_dialog.selectedFiles()[0]
@@ -924,6 +938,9 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
             return
         # Load the layer in QGIS
         QgsProject.instance().addMapLayer(layer)
+        # Select the downloaded layer in the combo so the model persists the path.
+        self.road_layer_combo.setLayer(layer)
+        self.emit_road_layer_change()
         self.progress_bar.setVisible(False)
         self.child_progress_bar.setVisible(False)
         self.enable_widgets()

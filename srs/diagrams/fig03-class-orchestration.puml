@@ -1,0 +1,55 @@
+@startuml
+!include kartoza.iuml
+title Core orchestration — class diagram
+class WorkflowQueueManager {
+  +processing_completed : pyqtSignal
+  +processing_error : pyqtSignal
+  +add_workflow(item, cell_size, scale)
+  +add_task(task)
+  +start_processing()
+  +cancel_processing()
+}
+class WorkflowQueue {
+  -job_queue : list
+  -active_tasks : dict
+  -mutex : QMutex
+  +add_job(task)
+  +start_processing()
+  +cancel_processing()
+}
+class WorkflowJob {
+  -_workflow : WorkflowBase
+  +run() : bool
+  +finished(result)
+}
+class WorkflowFactory {
+  +create_workflow(item, cell_size,\n scale, feedback, context)
+}
+abstract class WorkflowBase {
+  #item : JsonTreeItem
+  #target_crs : QgsCoordinateReferenceSystem
+  #layer_id : str
+  +execute() : bool
+  {abstract} #_process_features_for_area()
+  {abstract} #_process_raster_for_area()
+  {abstract} #_process_aggregate_for_area()
+}
+class JsonTreeItem {
+  +attributes() : dict
+  +setStatus(status)
+  +getStatus()
+  +guid : str
+  +role : str
+}
+WorkflowQueueManager o-- WorkflowQueue
+WorkflowQueue o-- "0..*" WorkflowJob
+WorkflowJob --> WorkflowFactory : creates workflow via
+WorkflowFactory ..> WorkflowBase : instantiates
+WorkflowJob o-- WorkflowBase
+WorkflowBase --> JsonTreeItem : reads config /\nwrites results
+note bottom of WorkflowBase
+  17 indicator workflows and
+  3 aggregation workflows
+  specialise this base class
+end note
+@enduml

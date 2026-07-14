@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 from qgis.core import (
+    Qgis,
     QgsCoordinateReferenceSystem,
     QgsFeature,
     QgsGeometry,
@@ -21,6 +22,12 @@ from qgis.core import (
 from geest.core.algorithms.native_network_analysis_processor import (
     NativeNetworkAnalysisProcessingTask,
 )
+
+# The native service-area analysis returns no features for this fixture on
+# QGIS 3.x (isochrones come back empty), but works on QGIS 4.x. Marking it
+# expectedFailure unconditionally makes the 4.x run fail with an
+# "unexpected success".
+_expected_failure_on_qgis3 = unittest.expectedFailure if Qgis.QGIS_VERSION_INT < 40000 else (lambda f: f)
 
 
 class TestNativeNetworkAnalysisProcessingTask(unittest.TestCase):
@@ -162,7 +169,7 @@ class TestNativeNetworkAnalysisProcessingTask(unittest.TestCase):
         self.assertEqual(NativeNetworkAnalysisProcessingTask.INCLUDE_BOUNDS, False)
         self.assertEqual(NativeNetworkAnalysisProcessingTask.CONCAVE_HULL_ALPHA, 0.3)
 
-    @unittest.expectedFailure  # Requires actual network data and QGIS processing environment
+    @_expected_failure_on_qgis3
     def test_run_with_valid_network(self):
         """Test running the task with valid network data.
 

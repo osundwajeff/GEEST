@@ -1,0 +1,32 @@
+@startuml
+!include kartoza.iuml
+title Run analysis — sequence diagram
+actor Analyst
+participant "Tree Panel" as tree
+participant "WorkflowQueueManager" as mgr
+participant "WorkflowJob\n(QgsTask)" as job
+participant "Workflow\n(via factory)" as wf
+database "study_area.gpkg" as gpkg
+participant "Working dir\n(rasters/VRTs)" as fs
+
+Analyst -> tree : Run all / run item
+tree -> tree : queue stages\n[indicators, factors,\ndimensions, analysis]
+loop each stage
+  tree -> mgr : add_workflow(item) ×N
+  mgr -> job : create via WorkflowFactory
+  mgr -> job : start (QgsTaskManager)
+  activate job
+  job -> wf : execute()
+  activate wf
+  wf -> gpkg : read grid / areas
+  wf -> gpkg : write grid column scores
+  wf -> fs : rasterize + VRT
+  wf --> job : success
+  deactivate wf
+  job --> tree : status + progress signals
+  deactivate job
+  tree -> tree : update icons / progress
+end
+tree -> tree : calculate insights\n(population, masks,\nsubnational aggregation)
+tree -> Analyst : results added to map
+@enduml

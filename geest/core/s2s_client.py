@@ -181,7 +181,7 @@ class S2SClient(QObject):
         for attempt in range(1, self.max_attempts + 1):
             url = QUrl(f"{self.base_url}{endpoint}")
             request = QNetworkRequest(url)
-            request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
+            request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
 
             try:
                 if method == "GET":
@@ -190,7 +190,7 @@ class S2SClient(QObject):
                     data = json.dumps(payload or {}).encode("utf-8")
                     reply = self.network_manager.blockingPost(request, data)
 
-                status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+                status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
                 response_text = self._extract_text(reply.content())
 
                 if status_code is None:

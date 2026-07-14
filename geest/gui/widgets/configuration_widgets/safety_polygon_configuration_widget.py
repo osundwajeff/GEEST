@@ -44,7 +44,7 @@ class SafetyPolygonConfigurationWidget(BaseConfigurationWidget):
         fusion_style = QStyleFactory.create("Fusion")
         if fusion_style is not None:
             spin_box.setStyle(fusion_style)
-        spin_box.setButtonSymbols(QAbstractSpinBox.UpDownArrows)
+        spin_box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.UpDownArrows)
         if spin_box.lineEdit() is not None:
             spin_box.lineEdit().setStyleSheet(f"color: {text_color};")
 
@@ -59,18 +59,18 @@ class SafetyPolygonConfigurationWidget(BaseConfigurationWidget):
             self.table_widget = QTableWidget()
             self.table_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             # Stop the label being editable
-            self.table_widget.setEditTriggers(QTableWidget.NoEditTriggers)
+            self.table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             self.table_widget.verticalHeader().setVisible(True)
             self.table_widget.verticalHeader().setDefaultSectionSize(24)
             self.table_widget.verticalHeader().setMinimumSectionSize(20)
-            self.table_widget.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+            self.table_widget.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
             self.table_widget.verticalHeader().setFixedWidth(28)
             self.internal_layout.addWidget(self.table_widget)
             self.table_widget.setColumnCount(2)
             self.table_widget.setColumnWidth(1, 110)
             self.table_widget.horizontalHeader().setStretchLastSection(False)
-            self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
             return self.populate_table()
             self.internal_layout.addWidget(self.table_widget)

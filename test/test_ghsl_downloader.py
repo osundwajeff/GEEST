@@ -16,7 +16,19 @@ import unittest
 
 from qgis.core import QgsFeedback, QgsRectangle
 
-from geest.core.algorithms.ghsl_downloader import GHSLDownloader
+from geest.core.algorithms.ghsl_downloader import GHSLDownloader, GhslDownloadError
+
+
+def _download_or_skip(test, downloader, tile_id):
+    """Download a tile, skipping the test when the JRC service is unavailable.
+
+    These are network integration tests: a download failure means the remote
+    service (or CI egress) is down, not that the plugin is broken.
+    """
+    try:
+        return downloader.download_and_unpack_tile(tile_id)
+    except GhslDownloadError as error:
+        test.skipTest(f"GHSL service unavailable: {error}")
 
 
 class TestGHSLDownloader(unittest.TestCase):
@@ -152,7 +164,7 @@ class TestGHSLDownloader(unittest.TestCase):
 
         # Download the first tile
         tile_id = tiles[0]
-        unpacked_files = downloader.download_and_unpack_tile(tile_id)
+        unpacked_files = _download_or_skip(self, downloader, tile_id)
 
         # Check that we got some files back
         self.assertIsInstance(unpacked_files, list, "download_and_unpack_tile should return a list")
@@ -190,7 +202,7 @@ class TestGHSLDownloader(unittest.TestCase):
             self.skipTest("No tiles found for test bbox")
 
         tile_id = tiles[0]
-        unpacked_files = downloader.download_and_unpack_tile(tile_id)
+        unpacked_files = _download_or_skip(self, downloader, tile_id)
 
         # Check that at least one .tif file was unpacked
         tif_files = [f for f in unpacked_files if f.endswith(".tif")]
@@ -232,7 +244,7 @@ class TestGHSLDownloader(unittest.TestCase):
 
         all_files = []
         for tile_id in tiles_to_download:
-            unpacked_files = downloader.download_and_unpack_tile(tile_id)
+            unpacked_files = _download_or_skip(self, downloader, tile_id)
             all_files.extend(unpacked_files)
 
             # Verify each file is not empty
@@ -327,7 +339,7 @@ class TestGHSLDownloaderIntegration(unittest.TestCase):
 
         # Step 2: Download first tile
         tile_id = tiles[0]
-        unpacked_files = downloader.download_and_unpack_tile(tile_id)
+        unpacked_files = _download_or_skip(self, downloader, tile_id)
 
         # Step 3: Verify download results
         self.assertGreater(len(unpacked_files), 0, "Should have unpacked files")

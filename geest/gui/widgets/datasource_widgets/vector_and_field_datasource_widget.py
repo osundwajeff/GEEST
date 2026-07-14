@@ -18,7 +18,7 @@ from qgis.core import (
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox
 from qgis.PyQt.QtCore import QSettings, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QToolButton
+from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QStyle, QToolButton
 
 from geest.utilities import log_message, resources_path
 
@@ -43,11 +43,11 @@ class VectorAndFieldDataSourceWidget(BaseDataSourceWidget):
             self.layer_combo = QgsMapLayerComboBox()
             filter = None
             if self.attributes.get("use_classify_polygon_into_classes", 0):
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
             elif self.attributes.get("use_classify_safety_polygon_into_classes", 0):
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
             else:
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
 
             self.layer_combo = QgsMapLayerComboBox()
             self.layer_combo.setFilters(filter)
@@ -79,7 +79,7 @@ class VectorAndFieldDataSourceWidget(BaseDataSourceWidget):
             clear_icon = QIcon(resources_path("resources", "icons", "clear.svg"))
             self.clear_button.setIcon(clear_icon)
             self.clear_button.setToolTip("Clear")
-            self.clear_button.setCursor(Qt.ArrowCursor)
+            self.clear_button.setCursor(Qt.CursorShape.ArrowCursor)
             self.clear_button.setStyleSheet("border: 0px; padding: 0px;")
             self.clear_button.clicked.connect(self.clear_shapefile)
             self.clear_button.setVisible(False)
@@ -145,9 +145,7 @@ class VectorAndFieldDataSourceWidget(BaseDataSourceWidget):
         """Reposition the clear button when the line edit is resized."""
         log_message("Resizing clear button")
         # Position the clear button inside the line edit
-        frame_width = self.shapefile_line_edit.style().pixelMetric(
-            self.shapefile_line_edit.style().PM_DefaultFrameWidth
-        )
+        frame_width = self.shapefile_line_edit.style().pixelMetric(QStyle.PixelMetric.PM_DefaultFrameWidth)
         self.shapefile_line_edit.setStyleSheet(
             f"QLineEdit {{ padding-right: {self.clear_button.sizeHint().width() + frame_width}px; }}"  # noqa E702,E202,E201
         )

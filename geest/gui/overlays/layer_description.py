@@ -4,13 +4,11 @@
 This module contains functionality for layer description.
 """
 
+# NOTE: when re-enabling the disabled paint() body below, restore these
+# imports: QRectF, QSettings, Qt (QtCore); QColor, QFont, QIcon (QtGui);
+# geest.core.settings.setting; ...utilities.resources_path
 from qgis.gui import QgsMapCanvasItem
-from qgis.PyQt.QtCore import QRectF, QSettings, Qt
-from qgis.PyQt.QtGui import QColor, QFont, QIcon, QPainter
-
-from geest.core.settings import setting
-
-from ...utilities import resources_path
+from qgis.PyQt.QtGui import QPainter
 
 """
 An overlay item for the QGIS map canvas.
@@ -52,9 +50,9 @@ class LayerDescriptionItem(QgsMapCanvasItem):
         # if not label_text:
         #     return
         # painter.setPen(QColor(0, 0, 0))
-        # font = QFont("Arial", 12, QFont.Bold)
+        # font = QFont("Arial", 12, QFont.Weight.Bold)
         # painter.setFont(font)
-        # painter.setRenderHint(QPainter.Antialiasing)
+        # painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         # rect_x = 10
         # rect_y = 10
         # # Calculate width based on text

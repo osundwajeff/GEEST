@@ -5,9 +5,9 @@ This module contains functionality for credits panel.
 """
 
 from qgis.core import Qgis  # noqa F401
-from qgis.PyQt.QtWidgets import QWidget
 from qgis.PyQt.QtCore import QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices, QFont
+from qgis.PyQt.QtWidgets import QWidget
 
 from geest.gui.widgets import CustomBannerLabel
 from geest.utilities import (
@@ -82,11 +82,11 @@ class CreditsPanel(FORM_CLASS, QWidget):
         """⚙️ Set font size."""
         panel_width = self.description.rect().width()
         title_size = int(linear_interpolation(panel_width, 16, 20, 400, 800))
-        content_size = int(linear_interpolation(panel_width, 11, 15, 400, 800))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
         footer_size = int(linear_interpolation(panel_width, 11, 14, 400, 800))
 
         title_font = QFont("Arial", title_size)
-        title_font.setWeight(QFont.DemiBold)
+        title_font.setWeight(QFont.Weight.DemiBold)
         self.label_2.setFont(title_font)
         self.description.setFont(QFont("Arial", content_size))
         self.label.setFont(QFont("Arial", footer_size))

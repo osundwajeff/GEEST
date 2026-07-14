@@ -570,8 +570,23 @@ class OpportunitiesMaskProcessor(QgsTask):
         Returns:
             str: The path to the reprojected and clipped raster.
         """
+        if self.raster_layer is None:
+            raise ValueError("No raster layer provided for opportunities mask raster subset.")
+        if not self.raster_layer.isValid():
+            raise ValueError("Raster layer for opportunities mask is invalid.")
+
+        raster_source = str(self.raster_layer.source() or "").strip()
+        if not raster_source:
+            raise ValueError("Raster source path is empty for opportunities mask.")
+        if not os.path.exists(raster_source):
+            raise ValueError(f"Raster source file does not exist: {raster_source}")
+        if self.cell_size_m <= 0:
+            raise ValueError(f"Invalid cell size for opportunities mask: {self.cell_size_m}")
+
         # Convert the bbox to QgsRectangle
         bbox: QgsRectangle = bbox.boundingBox()
+        if bbox.isEmpty() or bbox.width() <= 0 or bbox.height() <= 0:
+            raise ValueError("Invalid empty bounding box for opportunities mask raster subset.")
 
         reprojected_raster_path = os.path.join(
             self.workflow_directory,
@@ -579,7 +594,7 @@ class OpportunitiesMaskProcessor(QgsTask):
         )
 
         params = {
-            "INPUT": self.raster_layer,
+            "INPUT": raster_source,
             "TARGET_CRS": self.target_crs,
             "RESAMPLING": 0,
             "TARGET_RESOLUTION": self.cell_size_m,
@@ -587,6 +602,16 @@ class OpportunitiesMaskProcessor(QgsTask):
             "OUTPUT": reprojected_raster_path,
             "TARGET_EXTENT": f"{bbox.xMinimum()},{bbox.xMaximum()},{bbox.yMinimum()},{bbox.yMaximum()} [{self.target_crs.authid()}]",  # noqa E231
         }
+
+        log_message(
+            (
+                f"Warping opportunities mask raster area {index}: input={raster_source}, "
+                f"extent={params['TARGET_EXTENT']}, target_crs={self.target_crs.authid()}, "
+                f"resolution={self.cell_size_m}"
+            ),
+            tag="GeoE3",
+            level=Qgis.Info,
+        )
 
         processing.run("gdal:warpreproject", params, feedback=QgsProcessingFeedback())
         return reprojected_raster_path

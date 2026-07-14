@@ -1,0 +1,25 @@
+@startuml
+!include kartoza.iuml
+title Raster processor family — activity
+start
+:Load source raster
+(hazard layer | nighttime lights);
+while (More study areas?) is (yes)
+  :Clip raster to area bbox
+  (gdal:cliprasterbymasklayer);
+  :Reclassify to 0–5 with
+  hazard-specific rule table
+  (fire, flood, landslide,
+  cyclone, drought, NTL);
+  :Mask outside area → nodata;
+endwhile (no)
+if (Regional S2S variant?) then (yes)
+  :Join S2S hazard / NTL field
+  to grid instead of raster clip;
+  :Apply same reclassification
+  to grid column;
+endif
+:Write raster values to grid column;
+:Combined VRT + QML;
+stop
+@enduml

@@ -31,7 +31,7 @@ from geest.core.grid_column_utils import (
 from geest.core.workflows.mappings import MAPPING_REGISTRY
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class SinglePointBufferWorkflow(WorkflowBase):
@@ -74,12 +74,12 @@ class SinglePointBufferWorkflow(WorkflowBase):
                 tag="GeoE3",
                 level=Qgis.Critical,
             )
-            return False
+            raise WorkflowNotConfiguredError("No point layer configured for this indicator")
         self.features_layer = QgsVectorLayer(layer_source, "points", provider_type)
         if not self.features_layer.isValid():
             log_message("single_buffer_point_layer not valid", level=Qgis.Critical)
             log_message(f"Layer Source: {layer_source}", level=Qgis.Critical)
-            return False
+            raise WorkflowNotConfiguredError(f"Point layer for this indicator is not readable: {layer_source}")
         factor_id = None
         if item.isIndicator() and item.parentItem:
             factor_id = item.parentItem.attribute("id", None)
@@ -98,6 +98,7 @@ class SinglePointBufferWorkflow(WorkflowBase):
         buffer_distance = self.attributes.get("single_buffer_point_layer_distance", default_buffer_distance)
         self.buffer_distance = int(buffer_distance) if buffer_distance else int(default_buffer_distance)
         self.workflow_name = "single_point_buffer"
+        self.supports_empty_features_fallback = True
         # Grid-first mode: write results to grid columns first, then rasterize
         self.use_grid_first = True
         # Track if we've cleared the column (only do once, not per area)

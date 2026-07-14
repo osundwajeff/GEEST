@@ -1,0 +1,24 @@
+@startuml
+!include kartoza.iuml
+title Index-score processor family — activity
+start
+:Read index_score / eplex_score
+from item attributes;
+:Rescale to 0–5 Likert
+(score / 100 × 5, or clamp);
+if (Variant?) then (plain / contextual / EPLEX)
+  :write_uniform_value_to_grid()
+  for every cell in area;
+else (with GHSL / with Ookla)
+  :Ensure mask dataset available
+  (auto-download GHSL / Ookla);
+  :Spatial join: cells intersecting
+  settlement / connectivity polygons
+  get the score;
+  :Remaining cells set to 0;
+endif
+:rasterize_grid_column()
+→ <layer_id>_<n>.tif;
+:Build combined VRT + QML style;
+stop
+@enduml

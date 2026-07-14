@@ -1,0 +1,14 @@
+@startuml
+!include kartoza.iuml
+title Tree item workflow status — state machine
+[*] --> NotRun
+NotRun --> Queued : run all / run item
+Queued --> Running : task slot free
+Running --> Completed : workflow succeeds
+Running --> Failed : error raised
+Failed --> Queued : re-run
+Completed --> Queued : shift + re-run\n(force recompute)
+NotRun --> Excluded : weight = 0 or\n"Do Not Use"
+Excluded --> NotRun : re-enabled
+Completed --> [*]
+@enduml

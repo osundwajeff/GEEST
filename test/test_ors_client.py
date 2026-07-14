@@ -74,7 +74,7 @@ class TestORSClientRealRequest(unittest.TestCase):
         self.ors.make_request("foot-walking", self.params)
 
         # Start the event loop to wait for the network request to finish
-        self.loop.exec_()
+        self.loop.exec()
 
 
 # if __name__ == "__main__":
