@@ -15,8 +15,20 @@ about = The Geospatial Enabling Environments for Employment Spatial Tool, develo
 author = Kartoza for and with The World Bank
 email = info@kartoza.com, gost@worldbank.org
 description = Geospatial Enabling Environments for Employment Spatial Tool
-version = 2.0.4
-changelog = Version 2.0.3 - NTL Classification and UI Fixes
+version = 2.1.0
+changelog = Version 2.1.0 - GeoPackage self-healing and corruption root-cause fix
+
+	## New Features
+
+	- Automatic GeoPackage health checks with in-place self-healing (project open,
+	  after workflows, after study area creation).
+
+	## Bug Fixes
+
+	- Fixed the root cause of study area GeoPackage corruption (SQLite file
+	  locking was disabled by SQLITE_USE_OGR_VFS during study area creation).
+
+	Version 2.0.3 - NTL Classification and UI Fixes
 
 	## New Features
 	* Added user-controlled NTL classification mode toggle (Jenks vs Binary) with live UI updates

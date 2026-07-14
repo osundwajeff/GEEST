@@ -23,10 +23,18 @@ rm -f "$GEOE3_LOG"
 #  'qgis.override { extraPythonPackages = (ps: [ ps.pyqtwebengine ps.jsonschema ps.debugpy ps.future ps.psutil ]);}' \
 #  --command "GEEST_LOG=${GEEST_LOG} GEEST_DEBUG=${DEVELOPER_MODE} RUNNING_ON_LOCAL=1 qgis --profile GEEST2"
 
+# Make sure the working-tree plugin is symlinked into the profile's
+# plugins folder (QGIS 4.x keeps profiles under QGIS4; link into an
+# existing QGIS3 tree too for profiles migrated from 3.x).
+"$(dirname "$0")/ensure_plugin_link.sh" GEOE3 QGIS4 QGIS3
+
 # This is the new way, using Ivan Mincis nix spatial project and a flake
 # see flake.nix for implementation details
 # Both GEOE3_* and GEEST_* env vars are set for backward compatibility
-GEOE3_LOG=${GEOE3_LOG} \
+# Pin QGIS to a light palette even when the desktop (e.g. COSMIC) is in
+# dark mode — see scripts/qgis_light_theme_startup.py.
+PYQGIS_STARTUP="$(cd "$(dirname "$0")" && pwd)/qgis_light_theme_startup.py" \
+  GEOE3_LOG=${GEOE3_LOG} \
   GEOE3_DEBUG=${DEVELOPER_MODE} \
   GEOE3_EXPERIMENTAL=${GEOE3_EXPERIMENTAL} \
   GEOE3_TEST_DIR=${GEOE3_TEST_DIR} \
