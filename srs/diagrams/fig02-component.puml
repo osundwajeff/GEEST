@@ -1,0 +1,39 @@
+@startuml
+!include kartoza.iuml
+top to bottom direction
+title GeoE3 — component & deployment view
+package "QGIS Desktop" {
+  component "GeoE3 Dock\n10 stacked panels" as dock
+  component "Tree Panel\n(JsonTreeView / Model)" as tree
+  component "Datasource widgets\n(20+ input types)" as widgets
+  component "Workflow Queue Manager\n(QgsTask pool)" as queue
+  component "Workflow Factory\n(31 analysis modes)" as factory
+  component "Workflows\n(17 indicator + 3 aggregation)" as workflows
+  component "Algorithms\n(population, WEE, masks,\nnetwork analysis, S2S)" as algs
+  component "GeoPackage Doctor\n(self-healing)" as doctor
+}
+database "study_area.gpkg\n(grid, areas, chunks,\nGHSL, status)" as gpkg
+database "Working directory\n(rasters, VRTs, reports)" as fs
+cloud "External services" {
+  component "OpenRouteService" as ors
+  component "OSM / Overpass" as osm
+  component "GHSL tiles" as ghsl
+  component "Ookla open data" as ookla
+  component "Space2Stats API" as s2s
+}
+dock --> tree
+tree --> queue
+tree --> widgets
+queue --> factory
+factory --> workflows
+workflows --> algs
+workflows --> gpkg
+workflows --> fs
+algs --> gpkg
+doctor --> gpkg
+workflows --> ors
+workflows --> osm
+workflows --> ghsl
+workflows --> ookla
+workflows --> s2s
+@enduml

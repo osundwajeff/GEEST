@@ -1,0 +1,41 @@
+@startuml
+!include kartoza.iuml
+title Aggregation pyramid — indicator to GeoE3 score
+start
+partition "Indicator level" {
+  :Each indicator workflow writes a
+  0–5 score into its study_area_grid
+  column and rasterizes it;
+}
+partition "Factor level" {
+  :FactorAggregationWorkflow:
+  fac_<id> = Σ (factor_weighting ×
+  indicator column);
+}
+partition "Dimension level" {
+  :DimensionAggregationWorkflow:
+  dim_<id> = Σ (dimension_weighting ×
+  factor column);
+}
+partition "Analysis level" {
+  :AnalysisAggregationWorkflow:
+  geoe3 = Σ (analysis_weighting ×
+  dimension column);
+  :Rasterize + build geoe3_score VRT;
+}
+partition "Post-processing" {
+  fork
+    :GeoE3 × Population
+    ((geoe3 − 1) × 3 + pop class,
+    15 classes);
+  fork again
+    :Opportunities mask
+    (binary job-opportunity zones);
+  fork again
+    :GHSL-masked score variants;
+  end fork
+  :Subnational aggregation
+  (zonal statistics per admin unit);
+}
+stop
+@enduml

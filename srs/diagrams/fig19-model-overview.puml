@@ -1,0 +1,33 @@
+@startwbs
+<style>
+wbsDiagram {
+  FontName Lato
+  FontColor #383939
+  LineColor #8A8B8B
+  node { BackgroundColor #FFFFFF; LineColor #8A8B8B; RoundCorner 8; Padding 6; Margin 4 }
+  :depth(0) { BackgroundColor #54A2CC; FontColor #FFFFFF; FontStyle bold; LineColor #54A2CC }
+  :depth(1) { BackgroundColor #EAF3FA; LineColor #54A2CC; FontStyle bold }
+  :depth(2) { BackgroundColor #FCF3E0; LineColor #EEB348 }
+}
+</style>
+* GeoE3 analysis model\n<size:11>3 dimensions · 16 factors · 24 indicators</size>
+** Contextual\n<size:11>weight 0.1</size>
+*** EPLEX Score\n<size:10>1 indicator</size>
+*** Workplace Discrimination\n<size:10>1 indicator</size>
+*** Regulatory Frameworks\n<size:10>1 indicator</size>
+*** Financial Inclusion\n<size:10>1 indicator</size>
+**< Accessibility\n<size:11>weight 0.45</size>
+***< Women's Travel Patterns\n<size:10>5 indicators</size>
+***< Access to Public Transport\n<size:10>1 indicator</size>
+***< Access to Health Facilities\n<size:10>1 indicator</size>
+***< Access to Education and Training Facilities\n<size:10>1 indicator</size>
+***< Access to Financial Facilities\n<size:10>1 indicator</size>
+** Place Characterization\n<size:11>weight 0.45</size>
+*** Active Transport\n<size:10>1 indicator</size>
+*** Safety Perception\n<size:10>1 indicator</size>
+*** FCV\n<size:10>1 indicator</size>
+*** Education\n<size:10>1 indicator</size>
+*** Digital Inclusion\n<size:10>1 indicator</size>
+*** Environmental Hazards\n<size:10>5 indicators</size>
+*** Water sanitation\n<size:10>1 indicator</size>
+@endwbs

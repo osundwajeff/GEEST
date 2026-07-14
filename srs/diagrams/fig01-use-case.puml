@@ -1,0 +1,31 @@
+@startuml
+!include kartoza.iuml
+title GeoE3 — use case diagram
+left to right direction
+actor "Analyst" as analyst
+actor "GIS Administrator" as admin
+actor "Policy Maker" as policy
+rectangle "GeoE3 QGIS plugin" {
+  usecase "Create project\n(study area + grid)" as UC1
+  usecase "Open existing project" as UC2
+  usecase "Configure indicators\n(datasources + weights)" as UC3
+  usecase "Download OSM /\nGHSL / Ookla data" as UC4
+  usecase "Run analysis\n(indicators → GeoE3 score)" as UC5
+  usecase "View outputs on map" as UC6
+  usecase "Generate reports\n(study area / analysis)" as UC7
+  usecase "Subnational aggregation" as UC8
+  usecase "Configure ORS /\nroad network" as UC9
+}
+analyst --> UC1
+analyst --> UC2
+analyst --> UC3
+analyst --> UC4
+analyst --> UC5
+analyst --> UC6
+analyst --> UC7
+admin --> UC9
+admin --> UC1
+policy --> UC6
+policy --> UC7
+policy --> UC8
+@enduml

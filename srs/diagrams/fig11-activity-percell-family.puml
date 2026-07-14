@@ -1,0 +1,29 @@
+@startuml
+!include kartoza.iuml
+title Per-cell processor family — activity
+start
+:Load feature layer
+(points | polylines | polygons | OSM roads);
+:Clear target grid column;
+while (More study areas?) is (yes)
+  :Filter features to area;
+  if (OSM transport variant?) then (yes)
+    :Score cells by best intersecting
+    infrastructure class
+    (highway / cycleway types → 0–5);
+  else (count variants)
+    :Count intersecting features
+    per grid cell
+    (prepared-geometry tests,
+    10k-feature batches);
+  endif
+  if (Regional education proxy?) then (yes)
+    :Join S2S urbanisation fields;
+    :urban share → Likert 1–5
+    (thresholds 0.2/0.4/0.6/0.8);
+  endif
+endwhile (no)
+:Rasterize grid column per area;
+:Combined VRT + QML;
+stop
+@enduml

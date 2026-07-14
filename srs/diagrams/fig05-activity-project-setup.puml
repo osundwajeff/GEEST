@@ -1,0 +1,35 @@
+@startuml
+!include kartoza.iuml
+title Project setup — activity diagram
+start
+:Open GeoE3 dock (Intro panel);
+:Setup panel;
+if (New or existing project?) then (create new)
+  :Select boundary layer + name field;
+  :Choose analysis scale
+  (regional | national | local);
+  if (Regional?) then (yes)
+    :Select H3 resolution (0–15);
+  else (national / local)
+    :Set cell size (m);
+  endif
+  :Select working directory & CRS strategy;
+  :Toggle women considerations;
+  :Copy template model.json;
+  :Run StudyAreaProcessingTask;
+else (open existing)
+  :Pick recent project or browse;
+  :Validate model.json + study_area.gpkg;
+  if (Outputs valid?) then (no)
+    :Prompt to regenerate study area;
+  endif
+endif
+if (Regional scale?) then (yes)
+  :S2S prefetch panel (optional);
+endif
+:ORS panel — routing provider + API key;
+:Road network panel — select or
+download OSM network;
+:Tree panel (configuration);
+stop
+@enduml

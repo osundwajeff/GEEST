@@ -1,0 +1,32 @@
+@startwbs
+<style>
+wbsDiagram {
+  FontName Lato
+  FontColor #383939
+  LineColor #8A8B8B
+  node { BackgroundColor #FFFFFF; LineColor #8A8B8B; RoundCorner 8; Padding 6; Margin 4 }
+  :depth(0) { BackgroundColor #54A2CC; FontColor #FFFFFF; FontStyle bold; LineColor #54A2CC }
+  :depth(1) { BackgroundColor #EAF3FA; LineColor #54A2CC; FontStyle bold }
+  :depth(2) { BackgroundColor #FCF3E0; LineColor #EEB348 }
+}
+</style>
+* Place Characterization\n<size:11>weight 0.45</size>
+** Active Transport\n<size:10>weight 0.14</size>
+*** Active transport network
+**< Safety Perception\n<size:10>weight 0.14</size>
+***< Street / night-time lights
+** FCV\n<size:10>weight 0.14</size>
+*** ACLED conflict events
+**< Education\n<size:10>weight 0.14</size>
+***< Labour force with degrees
+** Digital Inclusion\n<size:10>weight 0.14</size>
+*** Internet use (% population)
+**< Environmental Hazards\n<size:10>weight 0.14</size>
+***< Fire hazard
+***< Flood hazard
+***< Landslide hazard
+***< Tropical cyclone hazard
+***< Drought hazard
+** Water sanitation\n<size:10>weight 0.14</size>
+*** Water & sanitation facilities
+@endwbs

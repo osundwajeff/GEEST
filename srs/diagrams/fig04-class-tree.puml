@@ -1,0 +1,32 @@
+@startuml
+!include kartoza.iuml
+title Analysis model tree — class diagram
+class JsonTreeModel {
+  +loadJsonData(json)
+  +to_json() : dict
+  +get_analysis_item()
+}
+class JsonTreeItem {
+  -attributes : dict (thread-safe)
+  -childItems : list
+  +role : analysis|dimension|factor|indicator
+  +guid : str
+  +attribute(key, default)
+  +setAttribute(key, value)
+  +getFactorIndicatorGuids()
+  +getDimensionFactorGuids()
+  +getAnalysisDimensionGuids()
+}
+class JsonTreeView {
+  +context menus
+  +status icons
+}
+JsonTreeModel o-- JsonTreeItem : root
+JsonTreeItem o-- "0..*" JsonTreeItem : children
+JsonTreeView --> JsonTreeModel
+note right of JsonTreeItem
+  Hierarchy mirrors model.json:
+  Analysis → Dimension (3)
+  → Factor (16) → Indicator (35+)
+end note
+@enduml

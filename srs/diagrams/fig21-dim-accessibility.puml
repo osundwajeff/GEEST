@@ -1,0 +1,28 @@
+@startwbs
+<style>
+wbsDiagram {
+  FontName Lato
+  FontColor #383939
+  LineColor #8A8B8B
+  node { BackgroundColor #FFFFFF; LineColor #8A8B8B; RoundCorner 8; Padding 6; Margin 4 }
+  :depth(0) { BackgroundColor #54A2CC; FontColor #FFFFFF; FontStyle bold; LineColor #54A2CC }
+  :depth(1) { BackgroundColor #EAF3FA; LineColor #54A2CC; FontStyle bold }
+  :depth(2) { BackgroundColor #FCF3E0; LineColor #EEB348 }
+}
+</style>
+* Accessibility\n<size:11>weight 0.45</size>
+** Women's Travel Patterns\n<size:10>weight 0.2</size>
+*** Kindergartens / childcare
+*** Primary schools
+*** Groceries
+*** Pharmacies
+*** Green spaces
+**< Access to Public Transport\n<size:10>weight 0.2</size>
+***< Public transport stops
+** Access to Health Facilities\n<size:10>weight 0.2</size>
+*** Hospitals & clinics
+**< Access to Education and Training Facilities\n<size:10>weight 0.2</size>
+***< Universities & tech schools
+** Access to Financial Facilities\n<size:10>weight 0.2</size>
+*** Banks & financial facilities
+@endwbs
