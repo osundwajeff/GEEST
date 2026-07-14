@@ -90,6 +90,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin reloads no longer stack duplicate dock widgets: `unload()`
   reparents the dock before the queued deletion, and `initGui()` sweeps
   stale `GeoE3DockWidget` instances left by a crashed previous load.
+- Plugin reloads no longer stack duplicate toolbar buttons ("GeoE3
+  Settings" et al.): every unload phase is individually guarded so one
+  failing step cannot abort the cleanup, all toolbar actions carry
+  objectNames, and `initGui()` sweeps stale instances before creating new
+  ones.
 - QGIS 4 / PyQt6 plugin-load failure: the dock area persisted in QSettings
   is an int, which PyQt6 no longer auto-converts to `Qt.DockWidgetArea` —
   now normalised through `_to_dock_widget_area()` (invalid values fall back

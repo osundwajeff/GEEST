@@ -253,12 +253,39 @@ class GeoE3Plugin:
         log_message(f"Using test directory: {env_test_dir}")
         return env_test_dir
 
+    # objectNames of every toolbar action this plugin creates — used to
+    # sweep stale instances on load so reloads never stack duplicates.
+    _TOOLBAR_ACTION_NAMES = (
+        "GeoE3RunAction",
+        "GeoE3DebugAction",
+        "GeoE3TestsAction",
+        "GeoE3SingleTestAction",
+        "GeoE3ProfilerAction",
+        "GeoE3SaveProfileAction",
+    )
+
+    def _remove_stale_toolbar_actions(self):
+        """Remove toolbar actions leaked by a previous load of the plugin."""
+        for name in self._TOOLBAR_ACTION_NAMES:
+            for stale in self.iface.mainWindow().findChildren(QAction, name):
+                try:
+                    self.iface.removeToolBarIcon(stale)
+                    stale.deleteLater()
+                except Exception as error:  # nosec B110
+                    log_message(f"Could not remove stale action {name}: {error}")
+
     def initGui(self):  # pylint: disable=missing-function-docstring
         """
         Initialize the GUI elements of the plugin.
         """
+        # Sweep any toolbar actions a previous load leaked (a crashed
+        # initGui or an unload aborted by an exception) so plugin reloads
+        # never stack duplicate buttons.
+        self._remove_stale_toolbar_actions()
+
         icon = QIcon(resources_path("resources", "geoe3-main.svg"))
         self.run_action = QAction(icon, "GeoE3 Settings", self.iface.mainWindow())
+        self.run_action.setObjectName("GeoE3RunAction")
         self.run_action.triggered.connect(self.run)
         self.iface.addToolBarIcon(self.run_action)
         self.debug_running = False
@@ -325,16 +352,19 @@ class GeoE3Plugin:
         if developer_mode:
             debug_icon = QIcon(resources_path("resources", "geoe3-debug.svg"))
             self.debug_action = QAction(debug_icon, "GEOE3 Debug Mode", self.iface.mainWindow())
+            self.debug_action.setObjectName("GeoE3DebugAction")
             self.debug_action.triggered.connect(self.debug)
             self.iface.addToolBarIcon(self.debug_action)
 
             tests_icon = QIcon(resources_path("resources", "run-tests.svg"))
             self.tests_action = QAction(tests_icon, "Run Tests", self.iface.mainWindow())
+            self.tests_action.setObjectName("GeoE3TestsAction")
             self.tests_action.triggered.connect(self.run_tests)
             self.iface.addToolBarIcon(self.tests_action)
 
             single_test_icon = QIcon(resources_path("resources", "run-single-test.svg"))
             self.single_test_action = QAction(single_test_icon, "Run Single Test", self.iface.mainWindow())
+            self.single_test_action.setObjectName("GeoE3SingleTestAction")
             self.single_test_action.triggered.connect(self.run_single_test)
             self.iface.addToolBarIcon(self.single_test_action)
 
@@ -632,12 +662,14 @@ for module_name in list(sys.modules.keys()):
         # Create profiler start/stop action
         profile_icon = QIcon(resources_path("resources", "geoe3-start-profile.svg"))
         self.profiler_action = QAction(profile_icon, "Start Profiling", self.iface.mainWindow())
+        self.profiler_action.setObjectName("GeoE3ProfilerAction")
         self.profiler_action.triggered.connect(self.toggle_profiler)
         self.iface.addToolBarIcon(self.profiler_action)
 
         # Create save profile results action (initially disabled)
         save_icon = QIcon(resources_path("resources", "geoe3-save-profile.svg"))
         self.save_profile_action = QAction(save_icon, "Save Profile Results", self.iface.mainWindow())
+        self.save_profile_action.setObjectName("GeoE3SaveProfileAction")
         self.save_profile_action.triggered.connect(self.save_profile_results)
         self.save_profile_action.setEnabled(False)
         self.iface.addToolBarIcon(self.save_profile_action)
@@ -780,59 +812,64 @@ for module_name in list(sys.modules.keys()):
             self.is_profiling = False
             log_message("Profiler stopped during plugin unload")
 
-        self.remove_map_canvas_items()
-        self.kill_debug()
+        # Every phase below is individually guarded: one failing step must
+        # never abort unload, or everything after it (toolbar actions, the
+        # dock widget, the options page) leaks and duplicates on reload.
+        try:
+            self.remove_map_canvas_items()
+        except Exception as e:  # nosec B110
+            log_message(f"Warning during canvas item cleanup: {e}")
+        try:
+            self.kill_debug()
+        except Exception as e:  # nosec B110
+            log_message(f"Warning during debug cleanup: {e}")
         # Save geometry before unloading
-        self.save_geometry()
+        try:
+            self.save_geometry()
+        except Exception as e:  # nosec B110
+            log_message(f"Warning saving dock geometry: {e}")
 
         # Disconnect the project changed signal
         try:
             QgsProject.instance().readProject.disconnect(self.dock_widget.qgis_project_changed)
-        except (TypeError, RuntimeError) as e:
-            # Handle cases where signal may already be disconnected or Qt objects deleted
+        except Exception as e:  # nosec B110
+            # Signal already disconnected, or Qt objects already deleted
             log_message(f"Warning during signal disconnection: {e}")
 
-        # Remove toolbar icons and clean up
-        if self.run_action:
-            self.iface.removeToolBarIcon(self.run_action)
-            self.run_action.deleteLater()
-            self.run_action = None
-
-        if self.single_test_action:
-            self.iface.removeToolBarIcon(self.single_test_action)
-            self.single_test_action.deleteLater()
-            self.single_test_action = None
-
-        if self.debug_action:
-            self.iface.removeToolBarIcon(self.debug_action)
-            self.debug_action.deleteLater()
-            self.debug_action = None
-
-        if self.tests_action:
-            self.iface.removeToolBarIcon(self.tests_action)
-            self.tests_action.deleteLater()
-            self.tests_action = None
-
-        # Clean up profiler actions
-        if self.profiler_action:
-            self.iface.removeToolBarIcon(self.profiler_action)
-            self.profiler_action.deleteLater()
-            self.profiler_action = None
-
-        if self.save_profile_action:
-            self.iface.removeToolBarIcon(self.save_profile_action)
-            self.save_profile_action.deleteLater()
-            self.save_profile_action = None
+        # Remove toolbar icons and clean up (each guarded so one dead Qt
+        # object cannot abort the rest of the cleanup)
+        for action_attr in (
+            "run_action",
+            "single_test_action",
+            "debug_action",
+            "tests_action",
+            "profiler_action",
+            "save_profile_action",
+        ):
+            action = getattr(self, action_attr, None)
+            if action:
+                try:
+                    self.iface.removeToolBarIcon(action)
+                    action.deleteLater()
+                except Exception as e:  # nosec B110
+                    log_message(f"Warning removing {action_attr}: {e}")
+            setattr(self, action_attr, None)
 
         # Unregister options widget factory
-        if self.options_factory:
-            self.iface.unregisterOptionsWidgetFactory(self.options_factory)
-            self.options_factory = None
+        try:
+            if self.options_factory:
+                self.iface.unregisterOptionsWidgetFactory(self.options_factory)
+                self.options_factory = None
+        except Exception as e:  # nosec B110
+            log_message(f"Warning unregistering options factory: {e}")
 
         # Remove canvas event filter
-        if hasattr(self, "_canvas_overlay_filter") and self._canvas_overlay_filter:
-            self.iface.mapCanvas().viewport().removeEventFilter(self._canvas_overlay_filter)
-            self._canvas_overlay_filter = None
+        try:
+            if hasattr(self, "_canvas_overlay_filter") and self._canvas_overlay_filter:
+                self.iface.mapCanvas().viewport().removeEventFilter(self._canvas_overlay_filter)
+                self._canvas_overlay_filter = None
+        except Exception as e:  # nosec B110
+            log_message(f"Warning removing canvas event filter: {e}")
 
         # Remove dock widget if it exists. Reparent to None before the
         # queued deleteLater so an immediate plugin reload cannot find the
