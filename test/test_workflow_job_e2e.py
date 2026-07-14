@@ -23,10 +23,26 @@ from geest.core.workflow_queue_manager import WorkflowQueueManager  # noqa: E402
 
 
 def make_indicator(attributes):
-    """Build a minimal analysis→dimension→factor→indicator chain."""
-    analysis = JsonTreeItem({"id": "analysis_1"}, role="analysis", parent=None)
-    dimension = JsonTreeItem({"id": "dimension_1"}, role="dimension", parent=analysis)
-    factor = JsonTreeItem({"id": "factor_1"}, role="factor", parent=dimension)
+    """Build a minimal analysis→dimension→factor→indicator chain.
+
+    Parents carry non-zero weightings so status checks do not classify the
+    indicator as "Excluded from analysis".
+    """
+    analysis = JsonTreeItem(
+        ["E2E analysis", "Configured", 1.0, {"id": "analysis_1"}],
+        role="analysis",
+        parent=None,
+    )
+    dimension = JsonTreeItem(
+        ["E2E dimension", "Configured", 1.0, {"id": "dimension_1", "analysis_weighting": 1.0}],
+        role="dimension",
+        parent=analysis,
+    )
+    factor = JsonTreeItem(
+        ["E2E factor", "Configured", 1.0, {"id": "factor_1", "dimension_weighting": 1.0}],
+        role="factor",
+        parent=dimension,
+    )
     data = ["E2E indicator", "Configured", 1.0, attributes]
     return JsonTreeItem(data, role="indicator", parent=factor)
 
@@ -110,6 +126,71 @@ class TestWorkflowJobEndToEnd(unittest.TestCase):
         manager = WorkflowQueueManager(pool_size=1)
         job = manager.add_workflow(item, cell_size_m=1000.0, analysis_scale="local")
         self.assertIsNone(job, "unconfigured indicator must be declined by the queue")
+
+    def test_broken_layer_marks_item_failed_and_run_continues(self):
+        """A broken data source marks the item failed; the run continues.
+
+        Regression for the field crash 'Exception: Invalid points layer
+        found.' aborting run_all: the declined item must carry the failed
+        status (red icon) and an accessible error tooltip, and the next
+        indicator in a multi-indicator run must still be accepted.
+        """
+        broken = make_indicator(
+            {
+                "analysis_mode": "use_multi_buffer_point",
+                "id": "e2e_broken_layer",
+                "factor_weighting": 1.0,
+                "description": "E2E broken layer",
+                "result": "Not Run",
+                "multi_buffer_travel_distances": "100,200",
+                "multi_buffer_point_shapefile": "/nonexistent/points.shp",
+            }
+        )
+        manager = WorkflowQueueManager(pool_size=1)
+        job = manager.add_workflow(broken, cell_size_m=1000.0, analysis_scale="local")
+        self.assertIsNone(job, "broken indicator must be declined, not raise")
+        self.assertEqual(broken.getStatus(), "Workflow failed")
+        error_text = broken.attribute("error", "")
+        self.assertTrue(error_text, "declined item must carry an error message for its tooltip")
+        self.assertNotIn("Traceback", error_text, "tooltip must be accessible language, not a traceback")
+
+        # The rest of a multi-indicator run continues: a valid indicator is
+        # still accepted by the same queue manager afterwards.
+        points = os.path.join(os.path.dirname(__file__), "test_data", "points", "points.shp")
+        healthy = make_indicator(
+            {
+                "analysis_mode": "use_point_per_cell",
+                "id": "e2e_healthy_after_broken",
+                "description": "E2E healthy indicator",
+                "result": "Not Run",
+                "point_per_cell_shapefile": points,
+            }
+        )
+        job = manager.add_workflow(healthy, cell_size_m=1000.0, analysis_scale="local")
+        self.assertIsNotNone(job, "a healthy indicator must still queue after a broken one")
+
+    def test_unexpected_exception_is_trapped_not_propagated(self):
+        """Even a non-WorkflowNotConfiguredError must not abort queueing."""
+        from unittest import mock
+
+        item = make_indicator(
+            {
+                "analysis_mode": "use_point_per_cell",
+                "id": "e2e_unexpected_boom",
+                "factor_weighting": 1.0,
+                "description": "E2E unexpected exception",
+                "result": "Not Run",
+            }
+        )
+        manager = WorkflowQueueManager(pool_size=1)
+        with mock.patch(
+            "geest.core.workflow_queue_manager.WorkflowJob",
+            side_effect=RuntimeError("boom"),
+        ):
+            job = manager.add_workflow(item, cell_size_m=1000.0, analysis_scale="local")
+        self.assertIsNone(job)
+        self.assertEqual(item.getStatus(), "Workflow failed")
+        self.assertIn("boom", item.attribute("error", ""))
 
 
 if __name__ == "__main__":

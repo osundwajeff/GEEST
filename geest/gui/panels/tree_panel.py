@@ -2005,13 +2005,16 @@ class TreePanel(QWidget):
             attributes["analysis_mode"] = "analysis_aggregation"
         task = self.queue_manager.add_workflow(item, self.cell_size_m(), self.analysis_scale())
         if task is None:
-            # The workflow declined the job (e.g. data source not configured).
+            # The workflow declined the job (data source missing or broken).
+            # The queue manager has already marked the item (failed icon and
+            # error tooltip); repaint so that is visible, tell the user in
+            # plain language, and let the rest of the run continue.
+            reason = item.attribute("error", "") or tr("configure its data source and run it again.")
+            self.treeView.viewport().update()
             try:
                 iface.messageBar().pushMessage(
                     tr("GeoE3"),
-                    tr("'{name}' was skipped — configure its data source and run it again.").format(
-                        name=item.attribute("id", item.guid)
-                    ),
+                    tr("'{name}' was skipped — {reason}").format(name=item.attribute("id", item.guid), reason=reason),
                     level=Qgis.Warning,
                     duration=10,
                 )
