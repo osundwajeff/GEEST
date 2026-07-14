@@ -957,6 +957,57 @@ def clear_grid_column(gpkg_path: str, column_name: str) -> bool:
         return False
 
 
+def fill_grid_column_zero_for_area(
+    gpkg_path: str,
+    column_name: str,
+    area_name: str,
+) -> bool:
+    """Set all NULL values to 0 in a grid column for a specific area.
+
+    Used when a workflow produces no features for an area (e.g. OSM points
+    outside the AOI).  Score 0 ("not enabling") is a meaningful result and
+    must be persisted so the grid renders correctly instead of showing
+    transparent/nodata cells.
+
+    Args:
+        gpkg_path: Path to the GeoPackage containing study_area_grid.
+        column_name: Name of the column to fill.
+        area_name: The area_name value identifying which cells to update.
+
+    Returns:
+        True if successful, False otherwise.
+    """
+    if not os.path.exists(gpkg_path):
+        log_message(f"GeoPackage not found: {gpkg_path}", level=Qgis.Warning)
+        return False
+
+    sanitized_column = _sanitize_column_name(column_name)
+
+    try:
+        ds = _open_gpkg_for_write(gpkg_path)
+        if not ds:
+            log_message(f"Could not open GeoPackage for write: {gpkg_path}", level=Qgis.Critical)
+            return False
+
+        sql = (
+            f'UPDATE study_area_grid SET "{sanitized_column}" = 0 '  # nosec B608
+            f"WHERE area_name = '{area_name}' AND \"{sanitized_column}\" IS NULL"
+        )
+        _execute_sql_with_retry(ds, sql)
+        ds = None
+        log_message(
+            f"Set score 0 for NULL cells in column {sanitized_column} for area {area_name}",
+        )
+        return True
+
+    except Exception as e:
+        log_message(
+            f"Error filling grid column zero for area: {e}",
+            level=Qgis.Critical,
+        )
+        return False
+
+
 def count_features_per_grid_cell(
     gpkg_path: str,
     column_name: str,
