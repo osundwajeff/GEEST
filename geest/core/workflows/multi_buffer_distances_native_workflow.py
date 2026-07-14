@@ -35,7 +35,7 @@ from geest.core.grid_column_utils import (
 from geest.core.workflows.mappings import MAPPING_REGISTRY
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class MultiBufferDistancesNativeWorkflow(WorkflowBase):
@@ -136,7 +136,9 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Warning,
                 )
-                raise Exception("Invalid points layer found.")
+                raise WorkflowNotConfiguredError(
+                    "No point layer is set for this indicator. Open its data source settings and choose a point layer."
+                )
         log_message(f"Using points layer at {layer_path}")
         self.features_layer = QgsVectorLayer(layer_path, "points", "ogr")
         if not self.features_layer.isValid():
@@ -182,9 +184,10 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
                     tag="GeoE3",
                     level=Qgis.Critical,
                 )
-                raise Exception(
-                    f"Points layer not found. If you used a temporary QuickOSM layer, "
-                    "ensure it is still loaded in QGIS before running the workflow."
+                raise WorkflowNotConfiguredError(
+                    "The point layer for this indicator could not be opened. If it was a temporary "
+                    "layer (e.g. from QuickOSM), load it in QGIS again or re-select a saved layer in "
+                    "the indicator's data source settings."
                 )
         mode = self.attributes.get("multi_buffer_travel_mode", "Walking")
         self.mode = None

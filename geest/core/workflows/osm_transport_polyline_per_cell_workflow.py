@@ -19,7 +19,7 @@ from geest.core.algorithms.features_per_cell_processor import select_grid_cells_
 from geest.core.osm_downloaders import OSMDownloadType
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class OsmTransportPolylinePerCellWorkflow(WorkflowBase):
@@ -73,7 +73,7 @@ class OsmTransportPolylinePerCellWorkflow(WorkflowBase):
                 if not layer_path:
                     error_msg = "No transport layer found. Please configure a data source or download the active transport network."
                     log_message(error_msg, tag="GeoE3", level=Qgis.Critical)
-                    raise ValueError(error_msg)
+                    raise WorkflowNotConfiguredError(error_msg)
         self.features_layer = QgsVectorLayer(layer_path, "OSM Transport Layer", "ogr")
 
     def _process_features_for_area(

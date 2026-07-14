@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A broken or missing data source on one indicator no longer aborts a
+  multi-indicator run with a raw Python traceback: workflow start-up
+  errors are trapped at the queue boundary, the indicator's status icon
+  flips to failed with an accessible explanation in its tooltip, and the
+  rest of the queue continues. The known config-validation raises
+  (multi-buffer, point-per-cell, OSM transport) now produce plain-language
+  messages.
 - GHSL tile download failures now raise a descriptive `GhslDownloadError`
   instead of surfacing later as a bare `FileNotFoundError` from zipfile;
   corrupt cached zips are removed so the next attempt re-downloads. The

@@ -4,6 +4,7 @@
 This module contains functionality for workflow queue manager.
 """
 
+import traceback
 from typing import Optional
 
 from qgis.core import Qgis, QgsProcessingContext, QgsProject, QgsTask
@@ -109,11 +110,41 @@ class WorkflowQueueManager(QObject):
                 tag="GeoE3",
                 level=Qgis.Warning,
             )
+            self._mark_item_errored(item, str(error))
             self.processing_error.emit(str(error))
+            return None
+        except Exception as error:  # one broken indicator must never abort the run
+            log_message(
+                f"Could not create workflow for {item.attribute('id', item.guid)}: {error}\n"
+                f"{traceback.format_exc()}",
+                tag="GeoE3",
+                level=Qgis.Critical,
+            )
+            message = (
+                f"This indicator could not be started ({error}). "
+                "Check its data source configuration and run it again."
+            )
+            self._mark_item_errored(item, message)
+            self.processing_error.emit(message)
             return None
         self.workflow_queue.add_job(task)
         log_message(f"Task added: {task.description()}")
         return task
+
+    @staticmethod
+    def _mark_item_errored(item: JsonTreeItem, message: str) -> None:
+        """Record a start failure on the tree item.
+
+        Setting ``result`` to an error marker flips the item's status to
+        "Workflow failed" (red icon) and ``error`` becomes its tooltip, so
+        the user can see which indicator needs attention and why while the
+        rest of the run continues.
+        """
+        try:
+            item.setAttribute("result", "Workflow Error")
+            item.setAttribute("error", message)
+        except Exception:  # nosec B110 — display bookkeeping must never raise
+            pass
 
     def start_processing(self) -> None:
         """Start processing the tasks in the WorkflowQueue."""

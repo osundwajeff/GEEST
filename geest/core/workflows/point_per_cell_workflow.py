@@ -27,7 +27,7 @@ from geest.core.grid_column_utils import (
 )
 from geest.utilities import log_message
 
-from .workflow_base import WorkflowBase
+from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
 
 
 class PointPerCellWorkflow(WorkflowBase):
@@ -64,33 +64,25 @@ class PointPerCellWorkflow(WorkflowBase):
         if not layer_path:
             layer_path = self.attributes.get("point_per_cell_layer_source", None)
             if not layer_path:
-                error = "No point per cell layer provided."
-                self.attributes["error"] = error
-                # Raise an exception using our error message
-                raise Exception(error)
-        try:
+                raise WorkflowNotConfiguredError(
+                    "No point layer is set for this indicator. Open its data source settings and choose a point layer."
+                )
+        log_message(
+            f"Loading point per cell layer: {layer_path}",
+            tag="GeoE3",
+            level=Qgis.Info,
+        )
+        self.features_layer = QgsVectorLayer(layer_path, "point_per_cell_layer", "ogr")
+        if not self.features_layer.isValid():
             log_message(
-                f"Loading point per cell layer: {layer_path}",
-                tag="GeoE3",
-                level=Qgis.Info,
-            )
-            self.features_layer = QgsVectorLayer(layer_path, "point_per_cell_layer", "ogr")
-            if not self.features_layer.isValid():
-                error = f"Point per cell layer is not valid: {layer_path}"
-                self.attributes["error"] = error
-                self.attributes["result"] = f"{self.workflow_name} Workflow Failed"
-                raise Exception(error)
-        except Exception as e:
-            log_message(
-                f"Error loading point per cell layer: {str(e)}",
+                f"Point per cell layer is not valid: {layer_path}",
                 tag="GeoE3",
                 level=Qgis.Critical,
             )
-            error = f"Error loading point per cell layer: {str(e)}"
-            self.attributes["error"] = error
-            self.attributes["result"] = f"{self.workflow_name} Workflow Failed"
-
-            raise Exception(error)
+            raise WorkflowNotConfiguredError(
+                f"The point layer for this indicator could not be opened ({layer_path}). "
+                "Re-select the data source in the indicator's settings."
+            )
         self.feedback.setProgress(1.0)
         self.workflow_name = "point_per_cell"
         self.supports_empty_features_fallback = True
