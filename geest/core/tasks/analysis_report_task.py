@@ -43,7 +43,7 @@ class AnalysisReportTask(QgsTask):
             report = AnalysisReport(
                 model_path=self.model_path,
                 working_directory=self.working_dir,
-                report_name="Study Area Summary",
+                report_name="GeoE3 Analysis Report",
             )
             report.create_layout()
             report.export_pdf(self.pdf_path)
