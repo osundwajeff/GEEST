@@ -17,7 +17,6 @@ from qgis.core import (
     QgsLayoutItemMap,
     QgsLayoutItemMapGrid,
     QgsLayoutItemPage,
-    QgsLayoutItemPicture,
     QgsLayoutItemShape,
     QgsLayoutMeasurement,
     QgsLayoutPoint,
@@ -28,7 +27,6 @@ from qgis.core import (
     QgsRectangle,
     QgsSimpleFillSymbolLayer,
     QgsTextFormat,
-    QgsTextShadowSettings,
     QgsUnitTypes,
     QgsVectorLayer,
 )
@@ -36,7 +34,37 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtXml import QDomDocument
 
-from geest.utilities import log_message, resources_path
+from geest.utilities import log_message
+
+# ---------------------------------------------------------------------------
+# Report design system — a clean, flat palette appropriate for a World Bank
+# publication (deliberately not vendor-branded).
+# ---------------------------------------------------------------------------
+NAVY = QColor("#002244")  # deep blue: header band, emphasis
+CYAN = QColor("#009FDA")  # accent: rules, chart bars
+CHARCOAL = QColor("#333333")  # body text
+GREY = QColor("#6E7B85")  # secondary text, captions
+MIST = QColor("#EEF4F8")  # subtle row/panel tint
+RULE = QColor("#D6DEE4")  # hairlines
+WHITE = QColor("#FFFFFF")
+
+PAGE_W = 210  # A4 portrait, mm
+PAGE_H = 297
+MARGIN = 15
+CONTENT_W = PAGE_W - 2 * MARGIN
+HEADER_H = 22
+FOOTER_Y = 284
+
+
+def _flat_fill(item: QgsLayoutItemShape, color: QColor) -> None:
+    """Give a layout shape a flat fill with no stroke."""
+    fill = QgsSimpleFillSymbolLayer()
+    fill.setColor(color)
+    fill.setStrokeColor(QColor(0, 0, 0, 0))
+    symbol = item.symbol()
+    symbol.deleteSymbolLayer(0)
+    symbol.appendSymbolLayer(fill)
+    item.setSymbol(symbol)
 
 
 class BaseReport:
@@ -181,33 +209,31 @@ class BaseReport:
         if show_header_and_footer:
             self.add_header_and_footer(current_page, title)
         else:
-            # Add a title label
-            title_label = QgsLayoutItemLabel(self.layout)
-            title_label.setText(title)
-            title_label.setFont(QFont("Arial", 20))
-            title_label.setFixedSize(QgsLayoutSize(160, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-            title_label.attemptMove(
-                QgsLayoutPoint(20, 20, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-                page=current_page,
+            self._label(
+                title,
+                MARGIN,
+                18,
+                CONTENT_W,
+                14,
+                current_page,
+                size=18,
+                color=NAVY,
+                bold=True,
             )
-            self.layout.addLayoutItem(title_label)
         description_text = self.page_descriptions.get(description_key, "")
-        # Add description label to the current page
-        description_label = QgsLayoutItemLabel(self.layout)
-        description_label.setText(description_text)
-        description_label.setFont(QFont("Arial", 10))
-
-        description_label.setMode(QgsLayoutItemLabel.ModeHtml)
-
-        # Position the label on the current page
-        description_label.attemptMove(
-            QgsLayoutPoint(20, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-            page=current_page,
-        )
-        # description_label.adjustSizeToText()
-        description_label.setFixedSize(QgsLayoutSize(160, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        description_label.setHAlign(Qt.AlignmentFlag.AlignJustify)
-        self.layout.addLayoutItem(description_label)
+        if description_text.strip():
+            description_label = self._label(
+                description_text,
+                MARGIN,
+                HEADER_H + 6,
+                CONTENT_W,
+                18,
+                current_page,
+                size=9.5,
+                color=GREY,
+                html=True,
+            )
+            description_label.setHAlign(Qt.AlignmentFlag.AlignJustify)
         return page
 
     def make_text_table(self, vector_layer: QgsVectorLayer, sort_column: str, current_page: int):
@@ -261,8 +287,23 @@ class BaseReport:
         layers: list[QgsMapLayer],
         crs,
         current_page: int,
+        x: float = MARGIN,
+        y: float = 34,
+        map_width_mm: float = CONTENT_W,
+        map_height_mm: float = 150,
+        show_annotations: bool = True,
     ):
+        """Add a map to the layout.
 
+        Args:
+            layers: Layers to render (top first).
+            crs: CRS of the extent calculation.
+            current_page: Page to place the map on.
+            x, y: Top-left position in mm.
+            map_width_mm, map_height_mm: Map size in mm.
+            show_annotations: When True, draw frame-edge coordinate
+                annotations; minimaps switch this off for a clean look.
+        """
         # Get the current extent of all the layers
         layers_extent = QgsRectangle()
         for layer in layers:
@@ -278,8 +319,6 @@ class BaseReport:
         map_item = QgsLayoutItemMap(self.layout)
         # Calculate the aspect ratio of the layer's extent
         layer_aspect_ratio = layers_extent.width() / layers_extent.height()
-        map_width_mm = 170
-        map_height_mm = 100
         # Initialize variables for the new extent
         new_extent = QgsRectangle(layers_extent)
         # if the extent does not have the same aspect ratio as
@@ -318,242 +357,269 @@ class BaseReport:
         map_item.setLayers(layers)
 
         map_item.attemptMove(
-            QgsLayoutPoint(20, 110, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
+            QgsLayoutPoint(x, y, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
 
-        map_item.attemptResize(
-            # 170mm width x 100mm height
-            QgsLayoutSize(map_width_mm, map_height_mm, QgsUnitTypes.LayoutUnit.LayoutMillimeters)
-        )
+        map_item.attemptResize(QgsLayoutSize(map_width_mm, map_height_mm, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
-        # ---------------------------
-        # Set up a grid over the map
-        # ---------------------------
-        # Create a new map grid for the map item
-        grid = QgsLayoutItemMapGrid("Grid 1", map_item)
-        grid.setEnabled(True)
-        grid.setCrs(geo_crs)
+        if show_annotations:
+            # Clean neatline: coordinate ticks on the frame edges only — no
+            # crosses or lines across the map face.
+            grid = QgsLayoutItemMapGrid("Grid 1", map_item)
+            grid.setEnabled(True)
+            grid.setCrs(geo_crs)
 
-        def round_down_to_sig_fig(x: float) -> float:
-            if x == 0 or math.isnan(x) or math.isinf(x):
-                return 1.0  # fallback grid interval for invalid extents
-            exp = math.floor(math.log10(abs(x)))
-            factor = 10**exp
-            return math.floor(x / factor * 10) / 10 * factor
+            def round_down_to_sig_fig(value: float) -> float:
+                if value == 0 or math.isnan(value) or math.isinf(value):
+                    return 1.0  # fallback grid interval for invalid extents
+                exp = math.floor(math.log10(abs(value)))
+                factor = 10**exp
+                return math.floor(value / factor * 10) / 10 * factor
 
-        # Define a grid interval of 1 degree
-        interval_x = round_down_to_sig_fig(geo_extent.width() / 10.0)
-        interval_y = round_down_to_sig_fig(geo_extent.height() / 10.0)
-        log_message(f"Grid interval: {interval_x}, {interval_y}")
-        log_message(f"X Range: {geo_extent.xMaximum() - geo_extent.xMinimum()}")
-        log_message(f"Y Range: {geo_extent.yMaximum() - geo_extent.yMinimum()}")
-        grid.setIntervalX(interval_x)
-        grid.setIntervalY(interval_y)
+            interval_x = round_down_to_sig_fig(geo_extent.width() / 4.0)
+            interval_y = round_down_to_sig_fig(geo_extent.height() / 4.0)
+            grid.setIntervalX(interval_x)
+            grid.setIntervalY(interval_y)
 
-        grid.setAnnotationDirection(QgsLayoutItemMapGrid.Vertical, QgsLayoutItemMapGrid.Bottom)
-        grid.setAnnotationDirection(QgsLayoutItemMapGrid.Vertical, QgsLayoutItemMapGrid.Top)
-        # Set the bottom to show x/ lon  only
-        # This prevents stray labels from lon rendering on the lat area and verce versa
-        grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.LongitudeOnly, QgsLayoutItemMapGrid.Bottom)
-        grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.HideAll, QgsLayoutItemMapGrid.Top)
-        grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.LatitudeOnly, QgsLayoutItemMapGrid.Left)
-        grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.HideAll, QgsLayoutItemMapGrid.Right)
-
-        # (Optional) Enable and configure annotations for the grid lines
-        grid.setAnnotationEnabled(True)
-
-        # Set the GridStyle to cross
-        grid.setStyle(QgsLayoutItemMapGrid.GridStyle.Cross)
-        grid.setCrossLength(0.5)  # Length of the cross arms in mm
-        # Set the grid line color to gray
-        grid.setGridLineColor(QColor(128, 128, 128))
-        grid.setGridLineWidth(0.2)  # Width of the grid lines in mm
-        grid.setAnnotationFont(QFont("Arial", 8))
-        grid.setFramePenSize(0.2)
-        # Example format: degrees and minutes (you can customize this format as needed)
-        # grid.setAnnotationFormat("dd° mm'")
-
-        # Add the grid to the map item. The map_item.grids() returns a list;
-        # append our configured grid to it.
-        map_item.grids().addGrid(grid)
-
-        # If needed, refresh or update your layout to see the grid applied.
+            # Bottom shows longitude horizontally, left shows latitude
+            # vertically, both OUTSIDE the frame so labels never overlap the
+            # map face; the opposite edges stay clean.
+            grid.setAnnotationDirection(QgsLayoutItemMapGrid.Horizontal, QgsLayoutItemMapGrid.Bottom)
+            grid.setAnnotationDirection(QgsLayoutItemMapGrid.Vertical, QgsLayoutItemMapGrid.Left)
+            grid.setAnnotationPosition(QgsLayoutItemMapGrid.OutsideMapFrame, QgsLayoutItemMapGrid.Bottom)
+            grid.setAnnotationPosition(QgsLayoutItemMapGrid.OutsideMapFrame, QgsLayoutItemMapGrid.Left)
+            grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.LongitudeOnly, QgsLayoutItemMapGrid.Bottom)
+            grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.HideAll, QgsLayoutItemMapGrid.Top)
+            grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.LatitudeOnly, QgsLayoutItemMapGrid.Left)
+            grid.setAnnotationDisplay(QgsLayoutItemMapGrid.DisplayMode.HideAll, QgsLayoutItemMapGrid.Right)
+            grid.setAnnotationEnabled(True)
+            grid.setStyle(QgsLayoutItemMapGrid.GridStyle.FrameAnnotationsOnly)
+            grid.setAnnotationTextFormat(self._text_format(7, GREY))
+            grid.setFramePenSize(0.2)
+            map_item.grids().addGrid(grid)
 
         self.layout.addLayoutItem(map_item)
-        # Add a black frame around the map item
+        # Thin charcoal neatline around the map
         map_item.setFrameEnabled(True)
-        map_item.setFrameStrokeColor(QColor(0, 0, 0))
-        map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.5))
-        # Set the new extent to the map item
-        # Get the QgsProject CRS and set the extent in the map item
-        project_crs = QgsProject.instance().crs()
-        project_transform = QgsCoordinateTransform(crs, project_crs, QgsProject.instance())
-        map_extent = project_transform.transformBoundingBox(new_extent)
-        log_message(
-            f"Map extent in project CRS: {map_extent.xMinimum()}, {map_extent.yMinimum()}, "
-            f"{map_extent.xMaximum()}, {map_extent.yMaximum()}"
-        )
-        map_item.setExtent(map_extent)
+        map_item.setFrameStrokeColor(CHARCOAL)
+        map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.3))
+        # Pin the map item to the data CRS and set the extent directly. The
+        # previous approach transformed the extent into the *project* CRS,
+        # which hangs inside proj when the project has no CRS set (headless
+        # report generation, fresh projects) and made report maps depend on
+        # whatever CRS the user's project happened to use.
+        map_item.setCrs(crs)
+        map_item.setExtent(new_extent)
         map_item.refresh()
 
-    def make_header(self, current_page: int, title: str = ""):
+    def make_minimap(
+        self,
+        caption: str,
+        layers: list[QgsMapLayer],
+        crs,
+        current_page: int,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+    ) -> None:
+        """Add a small captioned map: clean face (no grid), thin neatline.
+
+        Args:
+            caption: Short label rendered beneath the map.
+            layers: Layers to render.
+            crs: CRS for extent calculation.
+            current_page: Page to place the minimap on.
+            x, y: Top-left position in mm.
+            w, h: Total cell size in mm (map + caption).
         """
-        Add a header to the layout with page number and title.
+        caption_h = 7
+        self.make_map(
+            layers=layers,
+            crs=crs,
+            current_page=current_page,
+            x=x,
+            y=y,
+            map_width_mm=w,
+            map_height_mm=h - caption_h,
+            show_annotations=False,
+        )
+        self._label(
+            caption,
+            x,
+            y + h - caption_h + 1,
+            w,
+            caption_h,
+            current_page,
+            size=8,
+            color=GREY,
+            halign=Qt.AlignmentFlag.AlignHCenter,
+        )
+
+    def _text_format(self, size: float, color: QColor, bold: bool = False) -> QgsTextFormat:
+        """Build a flat text format in the report typeface."""
+        text_format = QgsTextFormat()
+        font = QFont("Arial")
+        font.setBold(bold)
+        text_format.setFont(font)
+        text_format.setSize(size)
+        text_format.setSizeUnit(QgsUnitTypes.RenderUnit.RenderPoints)
+        text_format.setColor(color)
+        return text_format
+
+    def _rect(self, x: float, y: float, w: float, h: float, color: QColor, page: int) -> None:
+        """Add a flat rectangle to the layout."""
+        shape = QgsLayoutItemShape(self.layout)
+        shape.setShapeType(QgsLayoutItemShape.Rectangle)
+        shape.attemptMove(QgsLayoutPoint(x, y, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page)
+        shape.setFixedSize(QgsLayoutSize(w, h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+        _flat_fill(shape, color)
+        self.layout.addLayoutItem(shape)
+
+    def _label(
+        self,
+        text: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        page: int,
+        size: float = 10,
+        color: QColor = CHARCOAL,
+        bold: bool = False,
+        halign=Qt.AlignmentFlag.AlignLeft,
+        valign=Qt.AlignmentFlag.AlignTop,
+        html: bool = False,
+    ) -> QgsLayoutItemLabel:
+        """Add a text label to the layout and return it."""
+        label = QgsLayoutItemLabel(self.layout)
+        label.setText(text)
+        if html:
+            label.setMode(QgsLayoutItemLabel.ModeHtml)
+        label.setTextFormat(self._text_format(size, color, bold))
+        label.setFixedSize(QgsLayoutSize(w, h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+        label.setHAlign(halign)
+        label.setVAlign(valign)
+        label.attemptMove(QgsLayoutPoint(x, y, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page)
+        self.layout.addLayoutItem(label)
+        return label
+
+    def make_header(self, current_page: int, title: str = ""):
+        """Add a flat header band with the page title.
 
         Args:
             current_page (int): The current page number.
             title (str, optional): The title to display in the header. Defaults to "".
         """
-
-        # Add background image
-        bg_image = QgsLayoutItemPicture(self.layout)
-        bg_image_path = resources_path("resources", "images", "geoe3-page-header-bg.png")
-        bg_image.setPicturePath(bg_image_path)
-        bg_image.attemptMove(
-            QgsLayoutPoint(0, 0, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-            page=current_page,
+        self._rect(0, 0, PAGE_W, HEADER_H, NAVY, current_page)
+        self._rect(0, HEADER_H, PAGE_W, 1.2, CYAN, current_page)
+        self._label(
+            title,
+            MARGIN,
+            0,
+            CONTENT_W - 40,
+            HEADER_H,
+            current_page,
+            size=15,
+            color=WHITE,
+            bold=True,
+            valign=Qt.AlignmentFlag.AlignVCenter,
         )
-        bg_image.setFixedSize(QgsLayoutSize(210, 30, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        # Ensure image fills the frame
-        bg_image.setResizeMode(QgsLayoutItemPicture.Stretch)
-        self.layout.addLayoutItem(bg_image)
-
-        # Setup the font to render the heading and page no
-        text_format = QgsTextFormat()
-        text_format.setColor(QColor(255, 255, 255))
-        font = QFont("Arial")
-        text_format.setFont(font)
-        text_format.setSize(18)
-        text_format.setSizeUnit(QgsUnitTypes.RenderUnit.RenderPoints)
-        shadow_settings = QgsTextShadowSettings()
-        shadow_settings.setEnabled(True)
-        text_format.setShadow(shadow_settings)
-
-        # Set the page title label on top left
-        page_title = QgsLayoutItemLabel(self.layout)
-        page_title.setText(title)
-        page_title.setTextFormat(text_format)
-        page_title.setMode(QgsLayoutItemLabel.ModeFont)
-        page_title.setVAlign(Qt.AlignmentFlag.AlignCenter)
-        page_title.setHAlign(Qt.AlignmentFlag.AlignLeft)
-        # wrap the text if too long
-        page_title.setFixedSize(QgsLayoutSize(180, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        # Position the label on the current page
-        page_title.attemptMove(
-            QgsLayoutPoint(10, 1, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-            page=current_page,
+        self._label(
+            self.report_name,
+            PAGE_W - MARGIN - 60,
+            0,
+            60,
+            HEADER_H,
+            current_page,
+            size=8,
+            color=QColor("#9FC5DE"),
+            halign=Qt.AlignmentFlag.AlignRight,
+            valign=Qt.AlignmentFlag.AlignVCenter,
         )
-        self.layout.addLayoutItem(page_title)
-
-        # Make a semi-opaque white circle to go behind the page no
-        circle = QgsLayoutItemShape(self.layout)
-        circle.setShapeType(QgsLayoutItemShape.Ellipse)
-        circle.setFixedSize(QgsLayoutSize(10, 10, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        circle.attemptMove(
-            QgsLayoutPoint(195, 5, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-            page=current_page,
-        )
-        fill_symbol = QgsSimpleFillSymbolLayer()
-        fill_symbol.setColor(QColor(255, 255, 255, 200))  # White with 200/255 opacity
-        # fill_symbol.setStrokeStyle(None)
-        self.layout.addLayoutItem(circle)
-
-        # Set the page number label on top
-        page_number = QgsLayoutItemLabel(self.layout)
-        page_number.setText(f"{current_page}")
-        text_format.setSize(12)
-        text_format.setColor(QColor(0, 0, 0))
-        page_number.setVAlign(Qt.AlignmentFlag.AlignCenter)
-        page_number.setHAlign(Qt.AlignmentFlag.AlignCenter)
-        page_number.setTextFormat(text_format)
-
-        page_number.setFixedSize(QgsLayoutSize(10, 10, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        # Position the label on the current page
-        page_number.attemptMove(
-            QgsLayoutPoint(195, 5, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-            page=current_page,
-        )
-        self.layout.addLayoutItem(page_number)
 
     def make_footer(self, current_page: int):
-        """
-        Add a footer to the layout with background image, rounded rectangle, and label.
-        """
-
-        # Add background image
-        bg_image = QgsLayoutItemPicture(self.layout)
-        bg_image_path = resources_path("resources", "images", "geoe3-page-footer-bg.png")
-        bg_image.setPicturePath(bg_image_path)
-        bg_image.attemptMove(
-            QgsLayoutPoint(0, 260, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-            page=current_page,
+        """Add a minimal footer: hairline, running title and page number."""
+        self._rect(MARGIN, FOOTER_Y, CONTENT_W, 0.3, RULE, current_page)
+        self._label(
+            "GeoE3 — Geospatial Enabling Environments for Employment",
+            MARGIN,
+            FOOTER_Y + 1.5,
+            CONTENT_W - 30,
+            6,
+            current_page,
+            size=7.5,
+            color=GREY,
         )
-        bg_image.setFixedSize(QgsLayoutSize(210, 30, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        # Ensure image fills the frame
-        bg_image.setResizeMode(QgsLayoutItemPicture.Stretch)
-        self.layout.addLayoutItem(bg_image)
+        self._label(
+            f"Page {current_page}",
+            PAGE_W - MARGIN - 30,
+            FOOTER_Y + 1.5,
+            30,
+            6,
+            current_page,
+            size=7.5,
+            color=GREY,
+            halign=Qt.AlignmentFlag.AlignRight,
+        )
 
     def add_header_and_footer(self, page_number, title: str = ""):
-        """_summary_
+        """Add the standard page furniture (header band + minimal footer).
+
+        The funding and data attribution text lives on the closing page (see
+        make_attribution_page) instead of being repeated on every page.
 
         Args:
-            page_number (_type_): _description_
-            title (str, optional): _description_. Defaults to "".
+            page_number: Page to decorate.
+            title (str, optional): Header title. Defaults to "".
         """
         self.make_header(page_number, title)
         self.make_footer(page_number)
 
-        footer_text = """
-         <p>This plugin was built with support from the <strong>Canada Clean Energy and
-         Forest Climate Facility (CCEFCF)</strong> and the <strong>Global Data Facility (GDF)</strong>,
-         by the Geospatial Team in the <strong>Development Economics Data Group (DECDG)</strong>.
-         This project is open source; you can download the code at
-         <a href="https://github.com/worldbank/GEOE3">https://github.com/worldbank/GEOE3</a>.</p>
-         <p>Data attribution: analysis workflows may include data/services from OpenStreetMap,
-         OpenRouteService, GHSL, Ookla Open Data, Space2Stats, ACLED, VIIRS Nighttime Lights,
-         and user-supplied datasets. Please review source terms and citation requirements.</p>
-"""
-        credits_text = """Developed by <a href="https://kartoza.com">Kartoza</a> for and
-        with The World Bank."""
-        # Add summary label to the current page
-        footer_label = QgsLayoutItemLabel(self.layout)
-        footer_label.setText(footer_text)
-        footer_label.setFixedSize(QgsLayoutSize(120, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        # Use html mode
-        footer_label.setMode(QgsLayoutItemLabel.ModeHtml)
-        # Position the label on the current page
-        footer_label.attemptMove(QgsLayoutPoint(80, 265, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page_number)
-        footer_label.setHAlign(Qt.AlignmentFlag.AlignJustify)
-        # Set the font to white
-        text_format = QgsTextFormat()
-        text_format.setColor(QColor(255, 255, 255))
-        font = QFont("Arial")
-        text_format.setFont(font)
-        text_format.setSize(7)
-        text_format.setSizeUnit(QgsUnitTypes.RenderUnit.RenderPoints)
+    def make_attribution_page(self, current_page: int) -> None:
+        """Add a closing page carrying funding credits and data attribution."""
+        self.make_page(
+            title="About this report",
+            description_key="__no_description__",
+            current_page=current_page,
+            show_header_and_footer=True,
+        )
+        body = """
+        <p>This report was generated by <strong>GeoE3 — Geospatial Enabling Environments
+        for Employment</strong>, a QGIS plugin developed for and with The World Bank.</p>
+        <p>The plugin was built with support from the <strong>Canada Clean Energy and
+        Forest Climate Facility (CCEFCF)</strong> and the <strong>Global Data Facility
+        (GDF)</strong>, by the Geospatial Team in the <strong>Development Economics Data
+        Group (DECDG)</strong>. The project is open source:
+        <a href="https://github.com/worldbank/GeoE3">github.com/worldbank/GeoE3</a>.</p>
+        <p><strong>Data attribution</strong>: analysis workflows may include data and
+        services from OpenStreetMap, OpenRouteService, GHSL, Ookla Open Data,
+        Space2Stats, ACLED, VIIRS Nighttime Lights, and user-supplied datasets.
+        Please review source terms and citation requirements before republication.</p>
+        """
+        self._rect(MARGIN, 34, CONTENT_W, 0.6, CYAN, current_page)
+        label = self._label(
+            body,
+            MARGIN,
+            40,
+            CONTENT_W,
+            120,
+            current_page,
+            size=10,
+            color=CHARCOAL,
+            html=True,
+        )
+        label.setHAlign(Qt.AlignmentFlag.AlignJustify)
 
-        footer_label.setTextFormat(text_format)
-        self.layout.addLayoutItem(footer_label)
-
-        # Add credits label to the current page
-        credits_label = QgsLayoutItemLabel(self.layout)
-        credits_label.setText(credits_text)
-        credits_label.setFixedSize(QgsLayoutSize(120, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-        # Use html mode
-        credits_label.setMode(QgsLayoutItemLabel.ModeHtml)
-        credits_label.setTextFormat(text_format)
-        # Position the label on the current page
-        credits_label.attemptMove(QgsLayoutPoint(80, 278, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page_number)
-        credits_label.setHAlign(Qt.AlignmentFlag.AlignRight)
-        self.layout.addLayoutItem(credits_label)
-
-    def export_pdf(self, output_path):
+    def export_pdf(self, output_path, dpi=None):
         """
         Export the current layout as a PDF file in raster mode.
 
         Parameters:
             output_path (str): The full file path (including filename) for the output PDF.
+            dpi (int, optional): Export resolution override. Lower values
+                (e.g. 96) give fast, small draft exports.
 
         Returns:
             bool: True if the export was successful, False otherwise.
@@ -565,6 +631,8 @@ class BaseReport:
         # caution - changing to False make html links work but
         # breaks map rendering
         export_settings.rasterizeWholeImage = True
+        if dpi:
+            export_settings.dpi = dpi
         exporter = QgsLayoutExporter(self.layout)
         result = exporter.exportToPdf(output_path, export_settings)
         # Save it as a qpt too

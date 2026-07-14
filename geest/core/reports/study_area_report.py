@@ -309,10 +309,17 @@ class StudyAreaReport(BaseReport):
             else:
                 layers = [layer]
                 crs = layer.crs()
+                # Keep this report's historic placement (summary label sits
+                # at the top right); explicit geometry since make_map's
+                # defaults now target the analysis report's full-width maps.
                 self.make_map(
                     layers=layers,
                     current_page=current_page,
                     crs=crs,
+                    x=15,
+                    y=110,
+                    map_width_mm=180,
+                    map_height_mm=100,
                 )
 
             # Add GHSL statistics and acknowledgements to the ghsl_settlements page

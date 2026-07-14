@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The analysis report has been completely redesigned: a flat, World Bank-
+  appropriate visual language (navy/cyan bands, hairline footers, page
+  numbers), a proper horizontal bar chart for processing times, clean map
+  neatlines with outside-frame coordinate annotations, and minimap grids —
+  the overview page shows the overall score plus dimension minimaps, each
+  dimension page its factor minimaps, and each factor page its indicator
+  minimaps. Funding/attribution moved to a styled closing page, blank pages
+  are impossible (layer validity is checked first), the cover typo is fixed,
+  and report maps no longer depend on the project CRS (which also hung
+  report generation when no project CRS was set). `export_pdf` gained an
+  optional dpi override for fast draft exports.
+
 ### Added
 
 - Reverse-engineered Software Requirements Specification under `srs/`
