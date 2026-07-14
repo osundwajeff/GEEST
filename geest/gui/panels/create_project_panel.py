@@ -157,7 +157,7 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
             self.spatial_scale_changed("local")
         else:
             self.spatial_scale_changed("national")
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         if hasattr(self.layer_combo, "setAllowEmptyLayer"):
             self.layer_combo.setAllowEmptyLayer(True)
         # Regional scale uses H3 hexagonal grids (L6 resolution)

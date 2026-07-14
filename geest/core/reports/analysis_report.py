@@ -123,7 +123,7 @@ class AnalysisReport(BaseReport):
         summary_label.setText(summary_text)
         summary_label.setFont(QFont("Arial", 12))
         summary_label.adjustSizeToText()
-        summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutMillimeters), page=0)
+        summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=0)
         self.layout.addLayoutItem(summary_label)
 
         # Compute and add summary statistics for each layer on separate pages
@@ -419,7 +419,7 @@ class AnalysisReport(BaseReport):
                 QgsLayoutPoint(
                     margin_left + 10.0 + max_bar_width_mm,
                     y,
-                    QgsUnitTypes.LayoutMillimeters,
+                    QgsUnitTypes.LayoutUnit.LayoutMillimeters,
                 ),
                 page=page,
             )
@@ -440,11 +440,11 @@ class AnalysisReport(BaseReport):
                 QgsLayoutPoint(
                     margin_left,
                     y,
-                    QgsUnitTypes.LayoutMillimeters,
+                    QgsUnitTypes.LayoutUnit.LayoutMillimeters,
                 ),
                 page=page,
             )
-            bar.setFixedSize(QgsLayoutSize(bar_width, row_height, QgsUnitTypes.LayoutMillimeters))
+            bar.setFixedSize(QgsLayoutSize(bar_width, row_height, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
             color = QColor(color)
             symbol = QgsSimpleFillSymbolLayer(color=color)

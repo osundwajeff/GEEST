@@ -188,7 +188,7 @@ class RoadNetworkPanel(FORM_CLASS, QWidget):
         # self.folder_status_label.setPixmap(
         #     QPixmap(resources_path("resources", "icons", "failed.svg"))
         # )
-        self.road_layer_combo.setFilters(QgsMapLayerProxyModel.LineLayer)
+        self.road_layer_combo.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         self.road_layer_combo.currentIndexChanged.connect(self.emit_road_layer_change)
         self.road_layer_combo.currentIndexChanged.connect(self.update_road_layer_status)
         self.load_road_layer_button.clicked.connect(self.load_road_layer)

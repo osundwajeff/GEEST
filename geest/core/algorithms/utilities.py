@@ -84,11 +84,11 @@ def subset_vector_layer(
     # geometry_type = features_layer.wkbType()
 
     # # Determine geometry type name based on input layer's geometry
-    # if QgsWkbTypes.geometryType(geometry_type) == QgsWkbTypes.PointGeometry:
+    # if QgsWkbTypes.geometryType(geometry_type) == QgsWkbTypes.GeometryType.PointGeometry:
     #     geometry_name = "Point"
-    # elif QgsWkbTypes.geometryType(geometry_type) == QgsWkbTypes.LineGeometry:
+    # elif QgsWkbTypes.geometryType(geometry_type) == QgsWkbTypes.GeometryType.LineGeometry:
     #     geometry_name = "LineString"
-    # elif QgsWkbTypes.geometryType(geometry_type) == QgsWkbTypes.PolygonGeometry:
+    # elif QgsWkbTypes.geometryType(geometry_type) == QgsWkbTypes.GeometryType.PolygonGeometry:
     #     geometry_name = "Polygon"
     # else:
     #     raise QgsProcessingException(f"Unsupported geometry type: {geometry_type}")

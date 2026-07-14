@@ -43,11 +43,11 @@ class VectorAndFieldDataSourceWidget(BaseDataSourceWidget):
             self.layer_combo = QgsMapLayerComboBox()
             filter = None
             if self.attributes.get("use_classify_polygon_into_classes", 0):
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
             elif self.attributes.get("use_classify_safety_polygon_into_classes", 0):
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
             else:
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
 
             self.layer_combo = QgsMapLayerComboBox()
             self.layer_combo.setFilters(filter)

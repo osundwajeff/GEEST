@@ -54,7 +54,9 @@ class S2SEducationDataSourceWidget(S2SDataSourceWidget):
         """Build controls and hide manual S2S fields input for Education."""
         super().add_internal_widgets()
         if hasattr(self, "layer_combo"):
-            self.layer_combo.setFilters(QgsMapLayerProxyModel.PointLayer | QgsMapLayerProxyModel.PolygonLayer)
+            self.layer_combo.setFilters(
+                QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer
+            )
         default_fields_text = ",".join(DEFAULT_S2S_EDUCATION_URBANIZATION_FIELDS)
         self.s2s_fields_line_edit.setText(default_fields_text)
         self.s2s_fields_line_edit.setEnabled(False)

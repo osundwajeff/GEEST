@@ -307,7 +307,7 @@ class GeoE3Plugin:
         existing_docks = [
             dw
             for dw in self.iface.mainWindow().findChildren(QDockWidget)
-            if self.iface.mainWindow().dockWidgetArea(dw) == dock_area
+            if self.iface.mainWindow().dockWidgetArea(dw) == dock_area and dw is not self.dock_widget
         ]
 
         # Tabify the new dock before the first found dock widget, if available
@@ -914,7 +914,7 @@ for module_name in list(sys.modules.keys()):
         if multiprocessing.current_process().pid > 1:
             import debugpy  # pylint: disable=import-outside-toplevel
 
-            debugpy.listen(("127.0.0.1", self.DEBUG_PORT))  # nosec B104 - localhost only for debug
+            debugpy.listen(("127.0.0.1", self.DEBUG_PORT))
             debugpy.wait_for_client()
             self.display_information_message_bar(
                 title="GeoE3",

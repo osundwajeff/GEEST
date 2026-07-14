@@ -95,7 +95,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # Set up the aggregation layer widgets
         self.aggregation_combo.setAllowEmptyLayer(True)
         self.aggregation_combo.setCurrentIndex(-1)
-        self.aggregation_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.aggregation_combo.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         self.aggregation_combo.currentIndexChanged.connect(self.aggregation_selected)
         self.aggregation_toolbutton.clicked.connect(self.aggregation_toolbutton_clicked)
         self.aggregation_lineedit.textChanged.connect(self.aggregation_lineedit_text_changed)
@@ -104,7 +104,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # Set up the population raster widgets
         self.population_combo.setAllowEmptyLayer(True)
         self.population_combo.setCurrentIndex(-1)
-        self.population_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
+        self.population_combo.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
         self.population_combo.currentIndexChanged.connect(self.population_selected)
         self.population_toolbutton.clicked.connect(self.population_toolbutton_clicked)
         self.population_lineedit.textChanged.connect(self.population_lineedit_text_changed)
@@ -113,7 +113,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # Set up the point layer widgets
         self.point_combo.setAllowEmptyLayer(True)
         self.point_combo.setCurrentIndex(-1)
-        self.point_combo.setFilters(QgsMapLayerProxyModel.PointLayer)
+        self.point_combo.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
         self.point_combo.currentIndexChanged.connect(self.point_selected)
         self.population_toolbutton.clicked.connect(self.point_toolbutton_clicked)
         self.point_lineedit.textChanged.connect(self.point_lineedit_text_changed)
@@ -122,7 +122,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # set up the polygon layer widgets
         self.polygon_combo.setAllowEmptyLayer(True)
         self.polygon_combo.setCurrentIndex(-1)
-        self.polygon_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.polygon_combo.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         self.polygon_combo.currentIndexChanged.connect(self.polygon_selected)
         self.polygon_toolbutton.clicked.connect(self.polygon_toolbutton_clicked)
         self.polygon_lineedit.textChanged.connect(self.polygon_lineedit_text_changed)
@@ -131,7 +131,7 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # Set up the raster layer widgets
         self.raster_combo.setAllowEmptyLayer(True)
         self.raster_combo.setCurrentIndex(-1)
-        self.raster_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
+        self.raster_combo.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
         self.raster_combo.currentIndexChanged.connect(self.raster_selected)
         self.raster_toolbutton.clicked.connect(self.raster_toolbutton_clicked)
         self.raster_lineedit.textChanged.connect(self.raster_lineedit_text_changed)

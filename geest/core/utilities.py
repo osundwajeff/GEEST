@@ -398,7 +398,7 @@ def validate_network_layer(layer_path: str, expected_crs: QgsCoordinateReference
         return False, f"Network layer is invalid or cannot be loaded: {layer_path}"
 
     # Check geometry type
-    if layer.geometryType() != QgsWkbTypes.LineGeometry:
+    if layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
         return False, "Network layer must be a line (polyline) layer"
 
     # Check CRS match

@@ -185,9 +185,9 @@ class BaseReport:
             title_label = QgsLayoutItemLabel(self.layout)
             title_label.setText(title)
             title_label.setFont(QFont("Arial", 20))
-            title_label.setFixedSize(QgsLayoutSize(160, 40, QgsUnitTypes.LayoutMillimeters))
+            title_label.setFixedSize(QgsLayoutSize(160, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
             title_label.attemptMove(
-                QgsLayoutPoint(20, 20, QgsUnitTypes.LayoutMillimeters),
+                QgsLayoutPoint(20, 20, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
                 page=current_page,
             )
             self.layout.addLayoutItem(title_label)
@@ -201,11 +201,11 @@ class BaseReport:
 
         # Position the label on the current page
         description_label.attemptMove(
-            QgsLayoutPoint(20, 40, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(20, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
         # description_label.adjustSizeToText()
-        description_label.setFixedSize(QgsLayoutSize(160, 40, QgsUnitTypes.LayoutMillimeters))
+        description_label.setFixedSize(QgsLayoutSize(160, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         description_label.setHAlign(Qt.AlignmentFlag.AlignJustify)
         self.layout.addLayoutItem(description_label)
         return page
@@ -237,7 +237,7 @@ class BaseReport:
             name_label.setText(f"{name}")
             name_label.adjustSizeToText()
             name_label.attemptMove(
-                QgsLayoutPoint(start_x, y_offset, QgsUnitTypes.LayoutMillimeters),
+                QgsLayoutPoint(start_x, y_offset, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
                 page=current_page,
             )
             self.layout.addLayoutItem(name_label)
@@ -250,7 +250,7 @@ class BaseReport:
                 QgsLayoutPoint(
                     start_x + 60,
                     y_offset,
-                    QgsUnitTypes.LayoutMillimeters,
+                    QgsUnitTypes.LayoutUnit.LayoutMillimeters,
                 ),
                 page=current_page,
             )
@@ -271,7 +271,7 @@ class BaseReport:
             try:
                 layer.dataProvider().reloadData()
                 layer.updateExtents()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             layers_extent.combineExtentWith(layer.extent())
 
@@ -318,13 +318,13 @@ class BaseReport:
         map_item.setLayers(layers)
 
         map_item.attemptMove(
-            QgsLayoutPoint(20, 110, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(20, 110, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
 
         map_item.attemptResize(
             # 170mm width x 100mm height
-            QgsLayoutSize(map_width_mm, map_height_mm, QgsUnitTypes.LayoutMillimeters)
+            QgsLayoutSize(map_width_mm, map_height_mm, QgsUnitTypes.LayoutUnit.LayoutMillimeters)
         )
 
         # ---------------------------
@@ -411,10 +411,10 @@ class BaseReport:
         bg_image_path = resources_path("resources", "images", "geoe3-page-header-bg.png")
         bg_image.setPicturePath(bg_image_path)
         bg_image.attemptMove(
-            QgsLayoutPoint(0, 0, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(0, 0, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
-        bg_image.setFixedSize(QgsLayoutSize(210, 30, QgsUnitTypes.LayoutMillimeters))
+        bg_image.setFixedSize(QgsLayoutSize(210, 30, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         # Ensure image fills the frame
         bg_image.setResizeMode(QgsLayoutItemPicture.Stretch)
         self.layout.addLayoutItem(bg_image)
@@ -425,7 +425,7 @@ class BaseReport:
         font = QFont("Arial")
         text_format.setFont(font)
         text_format.setSize(18)
-        text_format.setSizeUnit(QgsUnitTypes.RenderPoints)
+        text_format.setSizeUnit(QgsUnitTypes.RenderUnit.RenderPoints)
         shadow_settings = QgsTextShadowSettings()
         shadow_settings.setEnabled(True)
         text_format.setShadow(shadow_settings)
@@ -438,10 +438,10 @@ class BaseReport:
         page_title.setVAlign(Qt.AlignmentFlag.AlignCenter)
         page_title.setHAlign(Qt.AlignmentFlag.AlignLeft)
         # wrap the text if too long
-        page_title.setFixedSize(QgsLayoutSize(180, 40, QgsUnitTypes.LayoutMillimeters))
+        page_title.setFixedSize(QgsLayoutSize(180, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         # Position the label on the current page
         page_title.attemptMove(
-            QgsLayoutPoint(10, 1, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(10, 1, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
         self.layout.addLayoutItem(page_title)
@@ -449,9 +449,9 @@ class BaseReport:
         # Make a semi-opaque white circle to go behind the page no
         circle = QgsLayoutItemShape(self.layout)
         circle.setShapeType(QgsLayoutItemShape.Ellipse)
-        circle.setFixedSize(QgsLayoutSize(10, 10, QgsUnitTypes.LayoutMillimeters))
+        circle.setFixedSize(QgsLayoutSize(10, 10, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         circle.attemptMove(
-            QgsLayoutPoint(195, 5, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(195, 5, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
         fill_symbol = QgsSimpleFillSymbolLayer()
@@ -468,10 +468,10 @@ class BaseReport:
         page_number.setHAlign(Qt.AlignmentFlag.AlignCenter)
         page_number.setTextFormat(text_format)
 
-        page_number.setFixedSize(QgsLayoutSize(10, 10, QgsUnitTypes.LayoutMillimeters))
+        page_number.setFixedSize(QgsLayoutSize(10, 10, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         # Position the label on the current page
         page_number.attemptMove(
-            QgsLayoutPoint(195, 5, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(195, 5, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
         self.layout.addLayoutItem(page_number)
@@ -486,10 +486,10 @@ class BaseReport:
         bg_image_path = resources_path("resources", "images", "geoe3-page-footer-bg.png")
         bg_image.setPicturePath(bg_image_path)
         bg_image.attemptMove(
-            QgsLayoutPoint(0, 260, QgsUnitTypes.LayoutMillimeters),
+            QgsLayoutPoint(0, 260, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
             page=current_page,
         )
-        bg_image.setFixedSize(QgsLayoutSize(210, 30, QgsUnitTypes.LayoutMillimeters))
+        bg_image.setFixedSize(QgsLayoutSize(210, 30, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         # Ensure image fills the frame
         bg_image.setResizeMode(QgsLayoutItemPicture.Stretch)
         self.layout.addLayoutItem(bg_image)
@@ -519,11 +519,11 @@ class BaseReport:
         # Add summary label to the current page
         footer_label = QgsLayoutItemLabel(self.layout)
         footer_label.setText(footer_text)
-        footer_label.setFixedSize(QgsLayoutSize(120, 40, QgsUnitTypes.LayoutMillimeters))
+        footer_label.setFixedSize(QgsLayoutSize(120, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         # Use html mode
         footer_label.setMode(QgsLayoutItemLabel.ModeHtml)
         # Position the label on the current page
-        footer_label.attemptMove(QgsLayoutPoint(80, 265, QgsUnitTypes.LayoutMillimeters), page=page_number)
+        footer_label.attemptMove(QgsLayoutPoint(80, 265, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page_number)
         footer_label.setHAlign(Qt.AlignmentFlag.AlignJustify)
         # Set the font to white
         text_format = QgsTextFormat()
@@ -531,7 +531,7 @@ class BaseReport:
         font = QFont("Arial")
         text_format.setFont(font)
         text_format.setSize(7)
-        text_format.setSizeUnit(QgsUnitTypes.RenderPoints)
+        text_format.setSizeUnit(QgsUnitTypes.RenderUnit.RenderPoints)
 
         footer_label.setTextFormat(text_format)
         self.layout.addLayoutItem(footer_label)
@@ -539,12 +539,12 @@ class BaseReport:
         # Add credits label to the current page
         credits_label = QgsLayoutItemLabel(self.layout)
         credits_label.setText(credits_text)
-        credits_label.setFixedSize(QgsLayoutSize(120, 40, QgsUnitTypes.LayoutMillimeters))
+        credits_label.setFixedSize(QgsLayoutSize(120, 40, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         # Use html mode
         credits_label.setMode(QgsLayoutItemLabel.ModeHtml)
         credits_label.setTextFormat(text_format)
         # Position the label on the current page
-        credits_label.attemptMove(QgsLayoutPoint(80, 278, QgsUnitTypes.LayoutMillimeters), page=page_number)
+        credits_label.attemptMove(QgsLayoutPoint(80, 278, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page_number)
         credits_label.setHAlign(Qt.AlignmentFlag.AlignRight)
         self.layout.addLayoutItem(credits_label)
 

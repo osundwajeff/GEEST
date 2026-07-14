@@ -56,26 +56,26 @@ class VectorDataSourceWidget(BaseDataSourceWidget):
             filter = None
             tooltip = ""
             if self.attributes.get("use_single_buffer_point", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer that will be buffered with a single buffer."
             elif self.attributes.get("use_point_per_cell", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer whose points will be counted per cell."
             elif self.attributes.get("use_multi_buffer_point", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
                 tooltip = "A point layer whose points will buffered with multiple buffers."
             elif self.attributes.get("use_street_lights", 0):
-                filter = QgsMapLayerProxyModel.PointLayer
+                filter = QgsMapLayerProxyModel.Filter.PointLayer
             elif self.attributes.get("use_osm_transport_polyline_per_cell", 0):
                 # Putting this before use polyline layer means that
                 # it will be used with priority over a simple line layer
-                filter = QgsMapLayerProxyModel.LineLayer
+                filter = QgsMapLayerProxyModel.Filter.LineLayer
                 tooltip = "An OSM line layer whose features will be classified and the most beneficial category assigned to the cell."
             elif self.attributes.get("use_polyline_per_cell", 0):
-                filter = QgsMapLayerProxyModel.LineLayer
+                filter = QgsMapLayerProxyModel.Filter.LineLayer
                 tooltip = "A line layer whose features will be counted per cell."
             else:
-                filter = QgsMapLayerProxyModel.PolygonLayer
+                filter = QgsMapLayerProxyModel.Filter.PolygonLayer
                 tooltip = "A polygon layer whose features will be counted per cell."
 
             # Determine if OSM download widget should be added based on indicator type

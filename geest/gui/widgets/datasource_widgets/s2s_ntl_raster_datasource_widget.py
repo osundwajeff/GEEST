@@ -6,8 +6,8 @@ from urllib.parse import quote
 
 from qgis.core import (
     QgsApplication,
-    QgsMapLayerType,
     QgsMapLayerProxyModel,
+    QgsMapLayerType,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QSettings
@@ -83,7 +83,9 @@ class S2SNTLRasterDataSourceWidget(RasterDataSourceWidget):
         """Build raster controls and append S2S fetch controls."""
         super().add_internal_widgets()
 
-        self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+        self.raster_layer_combo.setFilters(
+            QgsMapLayerProxyModel.Filter.RasterLayer | QgsMapLayerProxyModel.Filter.VectorLayer
+        )
         self.raster_layer_combo.setToolTip("Select raster or vector layer from the map")
         self.raster_layer_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 

@@ -59,7 +59,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         """
         # Raster Layer ComboBox (Filtered to raster layers)
         self.raster_layer_combo = QgsMapLayerComboBox()
-        self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
+        self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
         self.raster_layer_combo.setAllowEmptyLayer(True)
         # Insert placeholder text at the top (only visually, not as a selectable item)
         self.raster_layer_combo.setCurrentIndex(-1)  # Ensure no selection initially
