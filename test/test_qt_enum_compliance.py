@@ -37,12 +37,18 @@ PATTERN = re.compile(r"\b(Q[A-Za-z0-9]+)\.([A-Z][A-Za-z0-9_]*)\b")
 
 
 def _scan_paths():
-    """Package .py files, excluding vendored libs and the test suite itself."""
+    """Plugin runtime .py files only.
+
+    Excludes vendored libs, the test suite, and scripts/ — the latter holds
+    developer-environment tooling (launchers, monitors) that is not part of
+    the plugin; it only appears under the package root in CI's packaged
+    test build.
+    """
     for path in PACKAGE_ROOT.rglob("*.py"):
         rel = str(path.relative_to(PACKAGE_ROOT))
         if "__pycache__" in rel or "extlibs" in rel:
             continue
-        if rel.startswith("test/") or rel.startswith("test_suite"):
+        if rel.startswith("test/") or rel.startswith("test_suite") or rel.startswith("scripts/"):
             continue
         yield path
 
