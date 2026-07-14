@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from qgis.core import (
+    QgsFillSymbol,
     QgsLayout,
     QgsLayoutItemLabel,
     QgsLayoutItemShape,
@@ -16,6 +17,7 @@ from qgis.core import (
     QgsLayoutSize,
     QgsProject,
     QgsRasterLayer,
+    QgsSingleSymbolRenderer,
     QgsUnitTypes,
     QgsVectorLayer,
 )
@@ -96,8 +98,20 @@ class AnalysisReport(BaseReport):
             layer = QgsVectorLayer(uri, f"Study Area ({layer_name})", "ogr")
             if layer.isValid():
                 self.study_area_layer = layer
-                source_qml = resources_path("resources", "qml", "study_area_polygons.qml")
-                layer.loadNamedStyle(source_qml)
+                # Outline only: the default study-area style has a solid fill
+                # which, drawn over the result raster, blanks out the map
+                # ("white interior with a black outline"). The report must
+                # show the same styled raster the model tree shows, with just
+                # a thin boundary on top.
+                symbol = QgsFillSymbol.createSimple(
+                    {
+                        "color": "0,0,0,0",
+                        "outline_color": "51,51,51,255",
+                        "outline_width": "0.4",
+                        "outline_style": "solid",
+                    }
+                )
+                layer.setRenderer(QgsSingleSymbolRenderer(symbol))
                 # Add to project temporarily for rendering
                 QgsProject.instance().addMapLayer(layer, False)
                 self.temp_layers.append(layer)
@@ -327,10 +341,17 @@ class AnalysisReport(BaseReport):
             self.page_descriptions[dim_name] = dimension.get(
                 "description", f"Aggregated analysis for dimension: {dim_name}"
             )
-            factor_minimaps = [
-                (factor.get("name", ""), self._load_raster(factor.get("result_file"), factor.get("name", "")))
-                for factor in used_factors
-            ]
+            # A dimension with a single factor aggregates to the same surface
+            # as that factor — a one-cell minimap grid would just repeat the
+            # main map, so skip it.
+            factor_minimaps = (
+                [
+                    (factor.get("name", ""), self._load_raster(factor.get("result_file"), factor.get("name", "")))
+                    for factor in used_factors
+                ]
+                if len(used_factors) > 1
+                else []
+            )
             if self._add_map_page(
                 f"{dim_name} Dimension",
                 dim_name,
@@ -351,13 +372,19 @@ class AnalysisReport(BaseReport):
                     for indicator in factor.get("indicators", [])
                     if indicator.get("analysis_mode", "") != "Do Not Use"
                 ]
-                indicator_minimaps = [
-                    (
-                        indicator.get("indicator", ""),
-                        self._load_raster(indicator.get("result_file"), indicator.get("indicator", "")),
-                    )
-                    for indicator in used_indicators
-                ]
+                # A factor with a single indicator produces the same surface
+                # as that indicator — skip the redundant one-cell grid.
+                indicator_minimaps = (
+                    [
+                        (
+                            indicator.get("indicator", ""),
+                            self._load_raster(indicator.get("result_file"), indicator.get("indicator", "")),
+                        )
+                        for indicator in used_indicators
+                    ]
+                    if len(used_indicators) > 1
+                    else []
+                )
                 if self._add_map_page(
                     f"{factor_name}",
                     factor_name,

@@ -363,6 +363,12 @@ class BaseReport:
 
         map_item.attemptResize(QgsLayoutSize(map_width_mm, map_height_mm, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
+        # CRS and extent must be set before the annotation grid is attached,
+        # otherwise the grid computes against the default (infinite) extent
+        # and proj logs 'point outside of projection domain' errors.
+        map_item.setCrs(crs)
+        map_item.setExtent(new_extent)
+
         if show_annotations:
             # Clean neatline: coordinate ticks on the frame edges only — no
             # crosses or lines across the map face.
@@ -404,13 +410,11 @@ class BaseReport:
         map_item.setFrameEnabled(True)
         map_item.setFrameStrokeColor(CHARCOAL)
         map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.3))
-        # Pin the map item to the data CRS and set the extent directly. The
-        # previous approach transformed the extent into the *project* CRS,
-        # which hangs inside proj when the project has no CRS set (headless
-        # report generation, fresh projects) and made report maps depend on
-        # whatever CRS the user's project happened to use.
-        map_item.setCrs(crs)
-        map_item.setExtent(new_extent)
+        # Note: the map is pinned to the data CRS (set above, before the
+        # grid). The previous approach transformed the extent into the
+        # *project* CRS, which hangs inside proj when the project has no CRS
+        # set (headless report generation, fresh projects) and made report
+        # maps depend on whatever CRS the user's project happened to use.
         map_item.refresh()
 
     def make_minimap(
