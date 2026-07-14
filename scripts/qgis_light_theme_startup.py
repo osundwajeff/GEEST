@@ -16,8 +16,10 @@ def _force_light_theme() -> None:
         from qgis.PyQt.QtGui import QGuiApplication, QPalette
 
         hints = QGuiApplication.styleHints()
-        if hasattr(hints, "setColorScheme"):
-            hints.setColorScheme(Qt.ColorScheme.Light)
+        # Resolved dynamically: Qt.ColorScheme only exists on Qt 6.5+.
+        color_scheme = getattr(Qt, "ColorScheme", None)
+        if color_scheme is not None and hasattr(hints, "setColorScheme"):
+            hints.setColorScheme(color_scheme.Light)
 
         # Belt and braces: if the platform theme already handed the app a
         # dark palette (or ignores the colour-scheme override), replace it

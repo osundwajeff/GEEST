@@ -14,7 +14,17 @@ import ast
 import unittest
 from pathlib import Path
 
-WORKFLOWS_DIR = Path(__file__).resolve().parent.parent / "geest" / "core" / "workflows"
+# Derive the location from the imported package when possible (correct in
+# every layout); fall back to path heuristics so this test also runs on a
+# bare python without QGIS installed.
+try:
+    import geest.core.workflows
+
+    WORKFLOWS_DIR = Path(geest.core.workflows.__file__).resolve().parent
+except ImportError:
+    _parent = Path(__file__).resolve().parent.parent
+    _root = _parent / "geest" if (_parent / "geest" / "core").exists() else _parent
+    WORKFLOWS_DIR = _root / "core" / "workflows"
 
 
 def _value_returns_in_init(tree):

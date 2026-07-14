@@ -34,6 +34,14 @@ def make_indicator(attributes):
 class TestWorkflowJobEndToEnd(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Some harnesses (the local docker runner) initialize Processing,
+        # others (qgis_testrunner.sh in CI) do not — workflows need it.
+        try:
+            from processing.core.Processing import Processing
+
+            Processing.initialize()
+        except Exception:  # nosec B110 — already initialized or unavailable
+            pass
         cls.test_data_directory = prepare_fixtures()
         cls.working_directory = os.path.join(cls.test_data_directory, "wee_score")
         # WorkflowJob does not pass a working directory — production
