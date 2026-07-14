@@ -71,6 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read `PM_DefaultFrameWidth` off a style *instance* — replaced with
   `QStyle.PixelMetric.PM_DefaultFrameWidth`, and the enum compliance test
   now also bans instance enum-member access (`style().PM_*`, `event.X`).
+- Active Transport skipped as "unconfigured" although a layer was set: the
+  polyline workflow now accepts the layer under any of its sibling mode
+  keys (`osm_transport_polyline_per_cell_*`, `road_network_layer_path`),
+  so switching analysis mode no longer orphans a configured layer; the
+  decline log lists exactly which data-source keys are present. A new
+  end-to-end suite (`test/test_workflow_job_e2e.py`) runs a real indicator
+  through the production queue → job → factory → workflow chain on both
+  QGIS images, covering the run path unit tests missed.
 - Crash when running an indicator with no data source configured: six
   workflow `__init__` methods did `return False` on missing/invalid
   sources, which Python rejects with `TypeError: __init__() should return
