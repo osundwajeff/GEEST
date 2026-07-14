@@ -24,6 +24,15 @@ from qgis.PyQt.QtCore import QEventLoop, QUrl
 from geest.utilities import log_message, resources_path
 
 
+class GhslDownloadError(RuntimeError):
+    """Raised when a GHSL tile could not be downloaded or is unreadable.
+
+    Callers (and the integration tests) can distinguish 'the JRC service is
+    unavailable' from a genuine bug — previously a failed download surfaced
+    as a bare FileNotFoundError from zipfile.
+    """
+
+
 class GHSLDownloader:
     """🎯 G H S L Downloader.
 
@@ -160,6 +169,7 @@ class GHSLDownloader:
             log_message(f"Downloading {url} to {zip_path}...")
 
             loop = QEventLoop()
+            download_errors = []
 
             def on_finished():
                 """🔄 On finished."""
@@ -173,6 +183,7 @@ class GHSLDownloader:
                     err_msg: QStringList of error messages from QGIS.
                 """
                 log_message(f"Download error: {err_msg}")
+                download_errors.append(str(err_msg))
                 loop.quit()
 
             downloader = QgsFileDownloader(QUrl(url), zip_path, authcfg="", httpMethod=Qgis.HttpMethod.Get)
@@ -180,6 +191,10 @@ class GHSLDownloader:
             downloader.downloadError.connect(on_error)
 
             loop.exec()
+
+            if not os.path.exists(zip_path):
+                detail = "; ".join(download_errors) or "no error detail reported by QgsFileDownloader"
+                raise GhslDownloadError(f"GHSL tile {tile_id} could not be downloaded from {url}: {detail}")
         else:
             log_message(f"Using cached zip: {zip_path}")
 
@@ -187,7 +202,18 @@ class GHSLDownloader:
         extracted_dir = os.path.join(cache_dir, tile_id)
         os.makedirs(extracted_dir, exist_ok=True)
 
-        with zipfile.ZipFile(zip_path, "r") as zf:
+        try:
+            zip_handle = zipfile.ZipFile(zip_path, "r")
+        except (zipfile.BadZipFile, OSError) as error:
+            # A truncated or corrupt download poisons the cache — remove it
+            # so the next attempt re-downloads instead of failing forever.
+            try:
+                os.remove(zip_path)
+            except OSError:  # nosec B110
+                pass
+            raise GhslDownloadError(f"GHSL tile {tile_id} cache file was unreadable and has been removed: {error}")
+
+        with zip_handle as zf:
             if not all(os.path.exists(os.path.join(extracted_dir, f)) for f in zf.namelist()):
                 zf.extractall(path=extracted_dir)
                 log_message(f"Extracted {tile_id} to {extracted_dir}")

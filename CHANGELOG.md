@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GHSL tile download failures now raise a descriptive `GhslDownloadError`
+  instead of surfacing later as a bare `FileNotFoundError` from zipfile;
+  corrupt cached zips are removed so the next attempt re-downloads. The
+  GHSL integration tests skip (rather than error) when the JRC service is
+  unreachable, so CI no longer fails on network flakiness.
 - SRS PDF conversion silently substituted DejaVu for the brand fonts and
   dropped bold: `srs/build.sh` now provisions Lato and JetBrains Mono via a
   throwaway fontconfig so PlantUML and LibreOffice embed the correct faces.
