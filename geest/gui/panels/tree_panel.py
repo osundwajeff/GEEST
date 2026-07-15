@@ -25,7 +25,8 @@ from qgis.core import (
     QgsVectorLayer,
 )
 from qgis.gui import QgsMessageBar
-from qgis.PyQt.QtCore import QModelIndex, QPoint, QSettings, Qt, pyqtSignal, pyqtSlot
+from qgis.PyQt import sip
+from qgis.PyQt.QtCore import QModelIndex, QPoint, QSettings, Qt, QTimer, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QMovie
 from qgis.PyQt.QtWidgets import (
     QAction,
@@ -482,6 +483,15 @@ class TreePanel(QWidget):
         # Verify (and self-heal if needed) the study area GeoPackage before
         # the user starts working with this project.
         self.check_study_area_gpkg_health(reason="project open")
+        # Offer to sweep orphaned layers (registry entries hidden from the
+        # legend, typically left behind by interrupted runs).
+        # ⚠️ Deferred: this handler runs inside the project-load signal —
+        # showing a modal dialog here re-enters the event loop mid-load, and
+        # removing layers at that point deletes layers the loader has
+        # registered but not yet attached to the legend (segfault, and every
+        # loading layer misdetects as an orphan). Wait until the load has
+        # fully settled.
+        QTimer.singleShot(3000, self.prompt_remove_orphaned_layers)
         model_path = os.path.join(new_directory, "model.json")
 
         project_path = QgsProject.instance().fileName()
@@ -1652,13 +1662,11 @@ class TreePanel(QWidget):
             clipboard = QApplication.clipboard()
             clipboard.setText(item.text())
 
-    def clean_unused_layers(self):
-        # Remove any layers from the project that are not in the QGIS legend
+    def _orphaned_layer_ids(self) -> list:
+        """Registry layers that are not shown anywhere in the legend."""
         from qgis.core import QgsLayerTreeGroup, QgsLayerTreeLayer
 
         project = QgsProject.instance()
-        root = project.layerTreeRoot()
-        removed_count = 0
 
         def collect_layer_ids(node):
             ids = set()
@@ -1671,14 +1679,67 @@ class TreePanel(QWidget):
                     ids.update(collect_layer_ids(child))
             return ids
 
-        layers_in_legend = collect_layer_ids(root)
-        for layer in project.mapLayers().values():
-            if layer.id() not in layers_in_legend:
-                log_message(f"Removing unused layer: {layer.name()}")
-                project.removeMapLayer(layer.id())
-                removed_count += 1
+        layers_in_legend = collect_layer_ids(project.layerTreeRoot())
+        return [layer_id for layer_id in project.mapLayers() if layer_id not in layers_in_legend]
+
+    def _remove_orphaned_layers(self) -> int:
+        """Remove all orphaned layers; returns how many were removed."""
+        project = QgsProject.instance()
+        orphans = self._orphaned_layer_ids()
+        for layer_id in orphans:
+            layer = project.mapLayer(layer_id)
+            log_message(f"Removing orphaned layer: {layer.name() if layer else layer_id}")
+            project.removeMapLayer(layer_id)
+        return len(orphans)
+
+    def clean_unused_layers(self):
+        """Remove any layers from the project that are not in the QGIS legend."""
+        removed_count = self._remove_orphaned_layers()
         # Show a message box to confirm completion and how many layers were removed
         QMessageBox.information(self, "Clean Unused Layers", f"Unused layers have been removed: {removed_count}")
+
+    def prompt_remove_orphaned_layers(self) -> None:
+        """Offer to sweep orphaned layers when a project is opened.
+
+        Orphans (registry layers absent from the legend) accumulate from
+        crashed runs and, once saved, persist inside the project file —
+        so opening a project is the natural moment to offer a cleanup.
+        """
+        # This runs from a QTimer.singleShot, so the panel may have been
+        # destroyed (plugin reload) before the timer fired.
+        if sip.isdeleted(self):
+            return
+        # Never sweep while background tasks run: an in-flight analysis or
+        # report task legitimately holds registry layers that are not in the
+        # legend, and removing them mid-render crashes QGIS.
+        if QgsApplication.taskManager().countActiveTasks() > 0:
+            log_message("Skipping orphaned-layer sweep: background tasks are running")
+            return
+        orphan_count = len(self._orphaned_layer_ids())
+        if not orphan_count:
+            return
+        answer = QMessageBox.question(
+            self,
+            tr("GeoE3"),
+            tr(
+                "This project contains {count} orphaned layer(s) — layers loaded in the "
+                "project but not shown in the layers panel, usually left behind by an "
+                "interrupted run.\n\nRemove them now?"
+            ).format(count=orphan_count),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            removed = self._remove_orphaned_layers()
+            try:
+                iface.messageBar().pushMessage(
+                    tr("GeoE3"),
+                    tr("Removed {count} orphaned layer(s).").format(count=removed),
+                    level=Qgis.Info,
+                    duration=5,
+                )
+            except Exception:  # nosec B110 — headless/test environments have no iface
+                pass
 
     def add_study_area_to_map(self):
         """Add the study area layers to the map.
