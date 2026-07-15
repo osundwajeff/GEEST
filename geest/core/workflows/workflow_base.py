@@ -555,6 +555,9 @@ class WorkflowBase(QObject):
         # Do this here rather than in the ctor in case the result key is changed
         # in the concrete class
         self.attributes[self.result_key] = "Not Run"
+        # Clear any stale advisory from a previous run; workflows set this
+        # when they complete with a caveat the user should see (tooltip).
+        self.attributes["warning"] = ""
 
         log_message(f"Executing {self.workflow_name}")
         log_message("----------------------------------")

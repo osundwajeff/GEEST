@@ -428,6 +428,9 @@ class JsonTreeItem:
             error = data.get("error", None)
             if error:
                 return f"Error: {data.get('error')}"
+            warning = data.get("warning", None)
+            if warning:
+                return f"Warning: {warning}"
             description = data.get("description", "")
             if description:
                 return f"{description}"
