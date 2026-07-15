@@ -315,6 +315,9 @@ class TreePanel(QWidget):
         # to prevent race conditions
         self.workflow_queue = []
         self.workflow_scope_item = None
+        # Set by run_all so a successful complete run ends with the analysis
+        # report being generated and opened for the user.
+        self._open_report_when_done = False
         self.queue_manager.processing_completed.connect(self.run_next_workflow_queue)
         self.queue_manager.processing_error.connect(self.on_processing_error)
 
@@ -2116,6 +2119,7 @@ class TreePanel(QWidget):
         """
         self.items_to_run = 0
         self.workflow_scope_item = item
+        self._open_report_when_done = False
         if shift_pressed:
             self.run_only_incomplete = False
         else:
@@ -2476,6 +2480,7 @@ class TreePanel(QWidget):
         """Run all workflows in the tree, regardless of their status."""
         self.run_only_incomplete = False
         self.workflow_scope_item = None
+        self._open_report_when_done = True
         self.clear_workflows()
         self._count_workflows_to_run()
         log_message(f"Total items to process: {self.items_to_run}")
@@ -2489,6 +2494,7 @@ class TreePanel(QWidget):
         """
         self.run_only_incomplete = True
         self.workflow_scope_item = None
+        self._open_report_when_done = False
         self._count_workflows_to_run()
         self._queue_workflows()
 
@@ -2527,6 +2533,20 @@ class TreePanel(QWidget):
             # All workflows have finished writing — verify the study area
             # GeoPackage is still sound and self-heal it if not.
             self.check_study_area_gpkg_health(reason="after workflows")
+            open_report = self._open_report_when_done
+            self._open_report_when_done = False
+            if open_report:
+                analysis_item = self.model.get_analysis_item()
+                status = analysis_item.getStatus() if analysis_item else ""
+                if status == "Completed successfully":
+                    log_message("Complete analysis run succeeded — generating the analysis report")
+                    self.generate_analysis_report()
+                else:
+                    log_message(
+                        f"Analysis run finished with status '{status}' — skipping the automatic report",
+                        tag="GeoE3",
+                        level=Qgis.Warning,
+                    )
             return
         # pop the first item from the queue
         next_workflow = self.workflow_queue.pop(0)
