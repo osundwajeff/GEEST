@@ -4,19 +4,23 @@
 This module contains functionality for study area report.
 """
 
-from qgis.core import (
-    QgsLayout,
-    QgsLayoutItemLabel,
-    QgsLayoutPoint,
-    QgsProject,
-    QgsUnitTypes,
-    QgsVectorLayer,
-)
-from qgis.PyQt.QtGui import QFont
+from qgis.core import QgsLayout, QgsProject, QgsVectorLayer
+from qgis.PyQt.QtCore import Qt
 
 from geest.utilities import log_message, resources_path
 
-from .base_report import BaseReport
+from .base_report import CHARCOAL, CONTENT_W, CYAN, GREY, HEADER_H, MARGIN, MIST, NAVY, BaseReport
+
+# Friendly page titles for the raw GeoPackage layer names.
+LAYER_DISPLAY_NAMES = {
+    "study_area_bbox": "Study Area Bounding Box",
+    "study_area_bboxes": "Part Bounding Boxes",
+    "study_area_polygons": "Study Area Polygons",
+    "study_area_clip_polygons": "Clip Polygons",
+    "chunks": "Processing Chunks",
+    "study_area_creation_status": "Creation Timings",
+    "ghsl_settlements": "GHSL Settlements",
+}
 
 
 class StudyAreaReport(BaseReport):
@@ -40,7 +44,9 @@ class StudyAreaReport(BaseReport):
             ValueError: If the layer cannot be loaded from the given file path.
             TypeError: If layer_input is neither a string nor a QgsVectorLayer.
         """
-        template_path = resources_path("resources", "qpt", "study_area_report_template.qpt")
+        # Shares the analysis report cover (artwork + frosted title panel)
+        # so the two reports form a matched set.
+        template_path = resources_path("resources", "qpt", "analysis_summary_report_template.qpt")
         super().__init__(template_path, report_name)
 
         self.layers = None  # Will hold the loaded layers from the GeoPackage
@@ -53,8 +59,14 @@ class StudyAreaReport(BaseReport):
 
         self.report_name = report_name
         self.load_layers_from_gpkg()
-        self.template_path = resources_path("resources", "qpt", "study_area_report_template.qpt")
         self.page_descriptions = {}
+        self.page_descriptions[
+            "summary"
+        ] = """
+        How long each step of the study area preparation took, followed by the
+        processed study area itself. Each internal data product used by the
+        analysis is described on the pages that follow.
+        """
         self.page_descriptions[
             "study_area_bbox"
         ] = """
@@ -220,35 +232,113 @@ class StudyAreaReport(BaseReport):
             "std_dev": std_dev,
         }
 
-    def add_ghsl_info_to_page(self, current_page):
-        """
-        Add GHSL statistics and acknowledgements to ghsl page.
+    def add_ghsl_info_to_page(self, current_page, y: float = 214):
+        """Add GHSL statistics and attribution as a styled panel.
 
         Parameters:
             current_page (int): The page number where the GHSL info should be added.
+            y (float): Top of the panel in mm.
         """
         ghsl_stats = self.compute_ghsl_statistics()
-        if ghsl_stats:
-            info_text = (
-                f"GHSL Statistics:\n"
-                f"Total polygons: {ghsl_stats['total']}\n"
-                f"With settlements: {ghsl_stats['intersects']}\n"
-                f"Percentage: {ghsl_stats['percentage']:.1f}%\n\n"
-                f"Source: Copernicus/EC JRC\n"
-                f"Product: GHS-SMOD R2023A\n"
-                f"License: CC BY 4.0"
-            )
+        if not ghsl_stats:
+            return
+        panel_h = 42
+        self._rect(MARGIN, y, CONTENT_W, panel_h, MIST, current_page)
+        self._rect(MARGIN, y, 2.2, panel_h, CYAN, current_page)
+        self._label(
+            "Settlement coverage",
+            MARGIN + 8,
+            y + 4.5,
+            CONTENT_W - 16,
+            7,
+            current_page,
+            size=12,
+            color=NAVY,
+            bold=True,
+        )
+        self._label(
+            f"<p>{ghsl_stats['intersects']} of {ghsl_stats['total']} study area parts "
+            f"({ghsl_stats['percentage']:.1f}%) intersect GHSL settlement data.<br/>"  # noqa E231
+            "Source: Copernicus / EC JRC — GHS-SMOD R2023A, licensed CC BY 4.0.</p>",
+            MARGIN + 8,
+            y + 13,
+            CONTENT_W - 16,
+            panel_h - 17,
+            current_page,
+            size=9.5,
+            color=CHARCOAL,
+            html=True,
+        )
 
-            info_label = QgsLayoutItemLabel(self.layout)
-            info_label.setText(info_text)
-            info_label.setFont(QFont("Arial", 12))
-            info_label.adjustSizeToText()
-            info_label.attemptMove(QgsLayoutPoint(10, 60, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=current_page)
-            self.layout.addLayoutItem(info_label)
+    def make_summary_page(self, current_page: int) -> int:
+        """Add the summary page: creation statistics as stat cards over a map.
+
+        Returns the next free page number.
+        """
+        self.make_page(
+            title="Study Area Summary",
+            description_key="summary",
+            current_page=current_page,
+            show_header_and_footer=True,
+        )
+        stats = self.compute_study_area_creation_statistics()
+        cards = [
+            (f"{stats['count']}", "Parts processed"),
+            (f"{stats['sum']:.1f} s", "Total processing time"),  # noqa E231
+            (f"{stats['mean']:.1f} s", "Average per part"),  # noqa E231
+            (f"{stats['min']:.1f} s", "Fastest part"),  # noqa E231
+            (f"{stats['max']:.1f} s", "Slowest part"),  # noqa E231
+            (f"{stats['std_dev']:.1f} s", "Standard deviation"),  # noqa E231
+        ]
+        card_w = 56
+        card_h = 24
+        gap = (CONTENT_W - 3 * card_w) / 2
+        top = HEADER_H + 26
+        for i, (value, caption) in enumerate(cards):
+            x = MARGIN + (i % 3) * (card_w + gap)
+            y = top + (i // 3) * (card_h + 6)
+            self._rect(x, y, card_w, card_h, MIST, current_page)
+            self._rect(x, y, card_w, 1.4, CYAN, current_page)
+            self._label(
+                value,
+                x,
+                y + 4,
+                card_w,
+                10,
+                current_page,
+                size=15,
+                color=NAVY,
+                bold=True,
+                halign=Qt.AlignmentFlag.AlignHCenter,
+            )
+            self._label(
+                caption,
+                x,
+                y + 15.5,
+                card_w,
+                6,
+                current_page,
+                size=8,
+                color=GREY,
+                halign=Qt.AlignmentFlag.AlignHCenter,
+            )
+        polygons_layer = self.layers.get("study_area_polygons")
+        if polygons_layer:
+            self.make_map(
+                layers=[polygons_layer],
+                crs=polygons_layer.crs(),
+                current_page=current_page,
+                x=MARGIN,
+                y=top + 2 * card_h + 14,
+                map_width_mm=CONTENT_W,
+                map_height_mm=160,
+            )
+        return current_page + 1
 
     def create_layout(self):
         """
-        Create a QGIS layout (report) that includes a title and a label with summary statistics.
+        Create a QGIS layout (report) with a styled cover, credits, a summary
+        page, and one page per internal data product.
 
         The layout is stored in the attribute self.layout.
         """
@@ -256,74 +346,50 @@ class StudyAreaReport(BaseReport):
         self.layout = QgsLayout(project)
         self.layout.initializeDefaults()
         self.load_template()
+        self.style_cover_page()
 
-        # Compute statistics and add a summary label
-        stats = self.compute_study_area_creation_statistics()
-        summary_text = (
-            f"Total parts: {stats['count']}\n"  # noqa E231
-            f"Minimum processing time: {stats['min']:.3f} sec\n"  # noqa E231
-            f"Maximum processing time: {stats['max']:.3f} sec\n"  # noqa E231
-            f"Average processing time: {stats['mean']:.3f} sec\n"  # noqa E231
-            f"Total processing time: {stats['sum']:.3f} sec\n"  # noqa E231
-            f"Standard Deviation: {stats['std_dev']:.3f} sec"  # noqa E231
-        )
-        summary_label = QgsLayoutItemLabel(self.layout)
-        summary_label.setText(summary_text)
-        summary_label.setFont(QFont("Arial", 12))
-        summary_label.adjustSizeToText()
-        summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=0)
-        self.layout.addLayoutItem(summary_label)
+        self.make_credits_page(current_page=1)
+        current_page = self.make_summary_page(current_page=2)
 
-        # Compute and add summary statistics for each layer on separate pages
-        # Skip study_area_grid as it has too many features and takes very long to render
-        layers_to_skip = {"study_area_grid"}
-        current_page = 1
-        for page_number, (layer_name, layer) in enumerate(self.layers.items()):
+        # One page per remaining layer. The grid is skipped (too many
+        # features to render); the polygons layer is the summary page's map.
+        layers_to_skip = {"study_area_grid", "study_area_polygons"}
+        for layer_name, layer in self.layers.items():
             if layer_name in layers_to_skip:
-                log_message(f"Skipping layer '{layer_name}' in report (too many features)")
+                log_message(f"Skipping layer '{layer_name}' in report")
                 continue
-            # Add a new page for each layer
-            page = self.make_page(
-                title=layer_name, description_key=layer_name, current_page=current_page, show_header_and_footer=True
+            title = LAYER_DISPLAY_NAMES.get(layer_name, layer_name.replace("_", " ").title())
+            self.make_page(
+                title=title,
+                description_key=layer_name,
+                current_page=current_page,
+                show_header_and_footer=True,
             )
-            del page
-
-            # Add summary label to the current page
-            summary_label = QgsLayoutItemLabel(self.layout)
-            summary_label.setText(summary_text)
-            summary_label.setFont(QFont("Arial", 12))
-            summary_label.adjustSizeToText()
-            # Position the label on the current page
-            summary_label.attemptMove(
-                QgsLayoutPoint(120, 60, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-                page=current_page,
-            )
-            self.layout.addLayoutItem(summary_label)
-
             if layer_name == "study_area_creation_status":
                 self.make_text_table(
                     vector_layer=layer,
                     sort_column="geom_total_duration_secs",
                     current_page=current_page,
                 )
-            else:
-                layers = [layer]
-                crs = layer.crs()
-                # Keep this report's historic placement (summary label sits
-                # at the top right); explicit geometry since make_map's
-                # defaults now target the analysis report's full-width maps.
+            elif layer_name == "ghsl_settlements":
                 self.make_map(
-                    layers=layers,
+                    layers=[layer],
+                    crs=layer.crs(),
                     current_page=current_page,
-                    crs=crs,
-                    x=15,
-                    y=110,
-                    map_width_mm=180,
-                    map_height_mm=100,
+                    x=MARGIN,
+                    y=64,
+                    map_width_mm=CONTENT_W,
+                    map_height_mm=140,
                 )
-
-            # Add GHSL statistics and acknowledgements to the ghsl_settlements page
-            if layer_name == "ghsl_settlements":
                 self.add_ghsl_info_to_page(current_page)
-
+            else:
+                self.make_map(
+                    layers=[layer],
+                    crs=layer.crs(),
+                    current_page=current_page,
+                    x=MARGIN,
+                    y=64,
+                    map_width_mm=CONTENT_W,
+                    map_height_mm=195,
+                )
             current_page += 1

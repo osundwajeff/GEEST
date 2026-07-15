@@ -13,6 +13,7 @@ from qgis.core import (
     QgsFeatureRequest,
     QgsLayout,
     QgsLayoutExporter,
+    QgsLayoutFrame,
     QgsLayoutItemLabel,
     QgsLayoutItemMap,
     QgsLayoutItemMapGrid,
@@ -186,6 +187,80 @@ class BaseReport:
         if not self.layout.loadFromTemplate(document, context):
             raise ValueError(f"Failed to load the template into the layout from '{self.template_path}'.")
 
+    def style_cover_page(self) -> None:
+        """Restyle the template cover: dark title inside the frosted panel.
+
+        The template ships the plugin title as light text across the top
+        banner, plus HTML frames carrying a heading and credits. HTML
+        frames render unreliably in headless exports and the credits have
+        their own page (see make_credits_page), so all frames are dropped
+        and the title is redrawn as a dark label centred in the frosted
+        white panel, with the report name as a subtitle.
+        """
+        title_text = "The Geospatial Enabling Environments for Employment Tool"
+        frosted_panel = None
+        for item in list(self.layout.items()):
+            if isinstance(item, QgsLayoutFrame):
+                multi_frame = item.multiFrame()
+                self.layout.removeLayoutItem(item)
+                if multi_frame is not None:
+                    self.layout.removeMultiFrame(multi_frame)
+            elif isinstance(item, QgsLayoutItemLabel):
+                # Template labels are cover furniture (main title, old
+                # subtitle text); pages are rebuilt programmatically, so
+                # only the title text is kept.
+                if item.text().strip().startswith("The Geospatial"):
+                    title_text = item.text().strip()
+                self.layout.removeLayoutItem(item)
+            elif isinstance(item, QgsLayoutItemShape) and frosted_panel is None:
+                # The frosted white panel is the only shape on the template
+                # cover; everything else there is a picture or a label.
+                frosted_panel = item
+        if frosted_panel is None:
+            # Older templates have no panel — draw one at the standard spot.
+            frosted_panel = QgsLayoutItemShape(self.layout)
+            frosted_panel.setShapeType(QgsLayoutItemShape.Rectangle)
+            frosted_panel.setCornerRadius(QgsLayoutMeasurement(8, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+            frosted_panel.attemptMove(QgsLayoutPoint(8.5, 39.6, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=0)
+            frosted_panel.setFixedSize(QgsLayoutSize(193, 29.1, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+            _flat_fill(frosted_panel, WHITE)
+            self.layout.addLayoutItem(frosted_panel)
+        # The template panel is quite translucent (0.76); over the dark cover
+        # artwork that muddies to blue-grey and dark text loses contrast.
+        frosted_panel.setItemOpacity(0.94)
+        panel_pos = frosted_panel.positionWithUnits()
+        panel_size = frosted_panel.sizeWithUnits()
+        x, y = panel_pos.x(), panel_pos.y()
+        w, h = panel_size.width(), panel_size.height()
+        title = self._label(
+            title_text,
+            x + 6,
+            y + 3.5,
+            w - 12,
+            h - 13,
+            0,
+            size=16.5,
+            color=NAVY,
+            bold=True,
+            halign=Qt.AlignmentFlag.AlignHCenter,
+            valign=Qt.AlignmentFlag.AlignVCenter,
+        )
+        title.setMarginY(0)
+        subtitle = self._label(
+            self.report_name,
+            x + 6,
+            y + h - 9,
+            w - 12,
+            6,
+            0,
+            size=10.5,
+            color=GREY,
+            halign=Qt.AlignmentFlag.AlignHCenter,
+        )
+        # Template items stack up to zValue 11; keep the text above the panel.
+        title.setZValue(frosted_panel.zValue() + 1)
+        subtitle.setZValue(frosted_panel.zValue() + 1)
+
     def make_page(self, title: str, description_key: str, current_page: int, show_header_and_footer: bool = False):
         """
         Create a new page in the layout and add a title and description.
@@ -236,51 +311,89 @@ class BaseReport:
             description_label.setHAlign(Qt.AlignmentFlag.AlignJustify)
         return page
 
-    def make_text_table(self, vector_layer: QgsVectorLayer, sort_column: str, current_page: int):
-        # I would have liked to just used a table here
-        # but the table is not working - it crashes QGIS in 3.42
+    def make_text_table(self, vector_layer: QgsVectorLayer, sort_column: str, current_page: int, start_y: float = 64):
+        """Draw a duration table as zebra rows with proportional bars.
 
-        start_x = 20
-        start_y = 110
-        row_height = 8  # mm between rows
+        A hand-drawn table (QgsLayoutItemAttributeTable crashes QGIS 3.42)
+        in the same visual language as the analysis report's processing
+        times page: name right-aligned in the left column, a cyan bar
+        scaled to the longest duration, and the value alongside.
+        """
+        row_pitch = 7
+        bar_h = 3.6
+        label_w = 72
+        bar_x = MARGIN + label_w + 5
+        bar_max_w = PAGE_W - MARGIN - bar_x - 22
+        max_rows = int((272 - start_y) / row_pitch)
 
-        # Create a request to sort by geom_total_duration_secs in descending order
         request = QgsFeatureRequest()
         clause = QgsFeatureRequest.OrderByClause(sort_column, ascending=False)
-        orderby = QgsFeatureRequest.OrderBy([clause])
-        request.setOrderBy(orderby)
+        request.setOrderBy(QgsFeatureRequest.OrderBy([clause]))
+        rows = [(feat["area_name"], float(feat[sort_column] or 0)) for feat in vector_layer.getFeatures(request)]
+        if not rows:
+            return
+        longest = max(duration for _, duration in rows) or 1.0
 
-        # Use the request in getFeatures
-        for i, feat in enumerate(vector_layer.getFeatures(request)):
-            name = feat["area_name"]
-            duration = round(feat[sort_column], 2)
-
-            y_offset = start_y + i * row_height
-            if y_offset > 240:
-                continue
-            # Label: Area name
-            name_label = QgsLayoutItemLabel(self.layout)
-            name_label.setText(f"{name}")
-            name_label.adjustSizeToText()
-            name_label.attemptMove(
-                QgsLayoutPoint(start_x, y_offset, QgsUnitTypes.LayoutUnit.LayoutMillimeters),
-                page=current_page,
+        self._label(
+            "Area",
+            MARGIN,
+            start_y - 6,
+            label_w,
+            5,
+            current_page,
+            size=8,
+            color=GREY,
+            bold=True,
+            halign=Qt.AlignmentFlag.AlignRight,
+        )
+        self._label(
+            "Processing time",
+            bar_x,
+            start_y - 6,
+            60,
+            5,
+            current_page,
+            size=8,
+            color=GREY,
+            bold=True,
+        )
+        for i, (name, duration) in enumerate(rows[:max_rows]):
+            y = start_y + i * row_pitch
+            if i % 2 == 0:
+                self._rect(MARGIN, y - 1.2, CONTENT_W, row_pitch - 1, MIST, current_page)
+            self._label(
+                str(name),
+                MARGIN,
+                y,
+                label_w,
+                5,
+                current_page,
+                size=8.5,
+                color=CHARCOAL,
+                halign=Qt.AlignmentFlag.AlignRight,
             )
-            self.layout.addLayoutItem(name_label)
-
-            # Label: Duration
-            duration_label = QgsLayoutItemLabel(self.layout)
-            duration_label.setText(f"{duration:.2f}")  # noqa E231
-            duration_label.adjustSizeToText()
-            duration_label.attemptMove(
-                QgsLayoutPoint(
-                    start_x + 60,
-                    y_offset,
-                    QgsUnitTypes.LayoutUnit.LayoutMillimeters,
-                ),
-                page=current_page,
+            self._rect(bar_x, y + (5 - bar_h) / 2, max(bar_max_w * duration / longest, 0.8), bar_h, CYAN, current_page)
+            self._label(
+                f"{duration:.2f} s",  # noqa E231
+                bar_x + bar_max_w + 2,
+                y,
+                20,
+                5,
+                current_page,
+                size=8,
+                color=GREY,
             )
-            self.layout.addLayoutItem(duration_label)
+        if len(rows) > max_rows:
+            self._label(
+                f"… and {len(rows) - max_rows} more areas not shown",
+                MARGIN,
+                start_y + max_rows * row_pitch + 2,
+                CONTENT_W,
+                5,
+                current_page,
+                size=8,
+                color=GREY,
+            )
 
     def make_map(
         self,

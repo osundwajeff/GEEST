@@ -11,8 +11,6 @@ from typing import Dict, List, Optional
 from qgis.core import (
     QgsFillSymbol,
     QgsLayout,
-    QgsLayoutFrame,
-    QgsLayoutItemLabel,
     QgsLayoutItemShape,
     QgsLayoutPoint,
     QgsLayoutSize,
@@ -26,7 +24,7 @@ from qgis.PyQt.QtCore import Qt
 
 from geest.utilities import log_message, resources_path
 
-from .base_report import CHARCOAL, CYAN, GREY, MIST, NAVY, BaseReport, _flat_fill
+from .base_report import CHARCOAL, CYAN, GREY, MIST, BaseReport, _flat_fill
 
 
 class AnalysisReport(BaseReport):
@@ -130,7 +128,7 @@ class AnalysisReport(BaseReport):
         self.layout = QgsLayout(project)
         self.layout.initializeDefaults()
         self.load_template()
-        self._style_cover_page()
+        self.style_cover_page()
 
         # Credits sit directly behind the cover so funders and developers
         # get a designed, prominent home.
@@ -152,69 +150,6 @@ class AnalysisReport(BaseReport):
             page=current_page,
         )
         current_page += 1
-
-    def _style_cover_page(self) -> None:
-        """Restyle the template cover: dark title inside the frosted panel.
-
-        The template ships the plugin title as light text across the top
-        banner, plus two HTML frames (a heading and a credits paragraph).
-        HTML frames render unreliably in headless exports and the credits
-        now have their own page, so both frames are dropped and the title
-        is redrawn as a dark label centred in the frosted white panel.
-        """
-        title_text = "The Geospatial Enabling Environments for Employment Tool"
-        frosted_panel = None
-        for item in list(self.layout.items()):
-            if isinstance(item, QgsLayoutFrame):
-                multi_frame = item.multiFrame()
-                self.layout.removeLayoutItem(item)
-                if multi_frame is not None:
-                    self.layout.removeMultiFrame(multi_frame)
-            elif isinstance(item, QgsLayoutItemLabel) and item.text().strip().startswith("The Geospatial"):
-                title_text = item.text().strip()
-                self.layout.removeLayoutItem(item)
-            elif isinstance(item, QgsLayoutItemShape) and frosted_panel is None:
-                # The frosted white panel is the only shape on the template
-                # cover; everything else there is a picture or a label.
-                frosted_panel = item
-        if frosted_panel is None:
-            log_message("Cover template has no frosted panel; leaving cover unstyled.")
-            return
-        # The template panel is quite translucent (0.76); over the dark cover
-        # artwork that muddies to blue-grey and dark text loses contrast.
-        frosted_panel.setItemOpacity(0.94)
-        panel_pos = frosted_panel.positionWithUnits()
-        panel_size = frosted_panel.sizeWithUnits()
-        x, y = panel_pos.x(), panel_pos.y()
-        w, h = panel_size.width(), panel_size.height()
-        title = self._label(
-            title_text,
-            x + 6,
-            y + 3.5,
-            w - 12,
-            h - 13,
-            0,
-            size=16.5,
-            color=NAVY,
-            bold=True,
-            halign=Qt.AlignmentFlag.AlignHCenter,
-            valign=Qt.AlignmentFlag.AlignVCenter,
-        )
-        title.setMarginY(0)
-        subtitle = self._label(
-            self.report_name,
-            x + 6,
-            y + h - 9,
-            w - 12,
-            6,
-            0,
-            size=10.5,
-            color=GREY,
-            halign=Qt.AlignmentFlag.AlignHCenter,
-        )
-        # Template items stack up to zValue 11; keep the text above the panel.
-        title.setZValue(frosted_panel.zValue() + 1)
-        subtitle.setZValue(frosted_panel.zValue() + 1)
 
     def _load_raster(self, layer_uri: str, title: str) -> Optional[QgsRasterLayer]:
         """Load (and cache) a raster result layer, or None when unavailable.
