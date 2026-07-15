@@ -209,8 +209,12 @@ class VectorAndFieldDataSourceWidget(BaseDataSourceWidget):
                 log_message(f"Failed to load shapefile: {shapefile_path}")
                 return
 
-            # Set the vector layer on the field selection combo box, which will automatically populate it
-            QgsProject.instance().addMapLayer(vector_layer, False)
+            # Set the vector layer on the field selection combo box, which
+            # will automatically populate it. Keep a python reference so the
+            # layer outlives this method — registering it in the project
+            # (the previous approach) orphaned a legend-less layer in the
+            # registry on every shapefile selection.
+            self._field_source_layer = vector_layer
             self.field_selection_combo.setLayer(vector_layer)
             self.field_selection_combo.setEnabled(True)  # Enable once layer is valid
 
