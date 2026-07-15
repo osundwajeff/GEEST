@@ -555,6 +555,9 @@ class WorkflowBase(QObject):
         # Do this here rather than in the ctor in case the result key is changed
         # in the concrete class
         self.attributes[self.result_key] = "Not Run"
+        # Clear any stale advisory from a previous run; workflows set this
+        # when they complete with a caveat the user should see (tooltip).
+        self.attributes["warning"] = ""
 
         log_message(f"Executing {self.workflow_name}")
         log_message("----------------------------------")
@@ -568,6 +571,24 @@ class WorkflowBase(QObject):
 
         log_message("Processing Started")
         self.updateStatus(f"Starting {self.workflow_name}")
+
+        # Grid-first workflows write scores into study_area_grid: with an
+        # empty grid every downstream step 'succeeds' while producing empty
+        # rasters — a silent failure seen in the field. Fail loudly instead.
+        if getattr(self, "use_grid_first", False):
+            from geest.core.grid_column_utils import grid_cell_count
+
+            if grid_cell_count(self.gpkg_path) == 0:
+                message = (
+                    "The analysis grid (study_area_grid) is empty, so this indicator cannot "
+                    "be scored. Re-create the study area to regenerate the grid, then run "
+                    "the analysis again."
+                )
+                log_message(message, tag="GeoE3", level=Qgis.Critical)
+                with self.item.atomicAttributeUpdate() as attrs:
+                    attrs["error"] = message
+                    attrs[self.result_key] = f"{self.workflow_name} Workflow Error"
+                return False
 
         feedback = QgsProcessingFeedback()
         output_rasters = []

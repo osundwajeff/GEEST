@@ -301,6 +301,16 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
         scored_buffers = self._assign_scores(bands)
         if scored_buffers is False:
             log_message("No scored buffers were created.", level=Qgis.Warning)
+            # Not an error — the area legitimately scores 0 — but the user
+            # needs to know WHY (tooltip on the indicator): typically every
+            # point sits further than the snapping tolerance from the road
+            # network, so no service areas could be computed.
+            self.attributes["warning"] = (
+                "No service areas could be computed for this indicator: none of the point "
+                "features are close enough to the road network (within 50 m). The area was "
+                "scored 0. Check that the road network layer covers the area around the "
+                "points, or use a denser network."
+            )
             return False
         raster_output = self._rasterize(
             input_layer=scored_buffers,
@@ -361,6 +371,16 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
 
         if scored_buffers is False:
             log_message("No scored buffers were created.", level=Qgis.Warning)
+            # Not an error — the area legitimately scores 0 — but the user
+            # needs to know WHY (tooltip on the indicator): typically every
+            # point sits further than the snapping tolerance from the road
+            # network, so no service areas could be computed.
+            self.attributes["warning"] = (
+                "No service areas could be computed for this indicator: none of the point "
+                "features are close enough to the road network (within 50 m). The area was "
+                "scored 0. Check that the road network layer covers the area around the "
+                "points, or use a denser network."
+            )
             return False
 
         self.progressChanged.emit(50.0)

@@ -5,9 +5,8 @@ This module contains functionality for ors panel.
 """
 
 from qgis.PyQt.QtCore import QUrl, pyqtSignal
-from qgis.PyQt.QtWidgets import QWidget
 from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
-from qgis.PyQt.QtWidgets import QMessageBox
+from qgis.PyQt.QtWidgets import QMessageBox, QWidget
 
 from geest.core import WorkflowQueueManager
 from geest.core.settings import set_setting, setting
@@ -143,7 +142,7 @@ class OrsPanel(FORM_CLASS, QWidget):
         # Scale the font size to fit the text in the available space
         # log_message(f"Label Width: {self.description.rect().width()}")
         # scale the font size linearly from 16 pt to 8 ps as the width of the panel decreases
-        font_size = int(linear_interpolation(self.description.rect().width(), 12, 16, 400, 600))
+        font_size = int(linear_interpolation(self.description.rect().width(), 12, 16, 400, 800))
         # log_message(f"Label Font Size: {font_size}")
         font = QFont("Arial", font_size)
         self.description.setFont(font)

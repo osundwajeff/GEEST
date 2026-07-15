@@ -40,14 +40,18 @@ class AnalysisReportTask(QgsTask):
         try:
             log_message("Starting analysis report generation...", tag="GeoE3", level=Qgis.Info)
 
-            report = AnalysisReport(
+            # Context manager guarantees cleanup: the report registers its
+            # result rasters in the project registry (legend-less) while
+            # rendering, and without cleanup every generation leaked ~20
+            # orphaned layers into the session.
+            with AnalysisReport(
                 model_path=self.model_path,
                 working_directory=self.working_dir,
-                report_name="Study Area Summary",
-            )
-            report.create_layout()
-            report.export_pdf(self.pdf_path)
-            report.export_qpt(self.qpt_path)
+                report_name="GeoE3 Analysis Report",
+            ) as report:
+                report.create_layout()
+                report.export_pdf(self.pdf_path)
+                report.export_qpt(self.qpt_path)
 
             log_message(
                 f"Analysis report generated successfully: {self.pdf_path}",

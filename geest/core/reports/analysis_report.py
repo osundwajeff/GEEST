@@ -9,22 +9,22 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from qgis.core import (
+    QgsFillSymbol,
     QgsLayout,
-    QgsLayoutItemLabel,
     QgsLayoutItemShape,
     QgsLayoutPoint,
     QgsLayoutSize,
     QgsProject,
     QgsRasterLayer,
-    QgsSimpleFillSymbolLayer,
+    QgsSingleSymbolRenderer,
     QgsUnitTypes,
     QgsVectorLayer,
 )
-from qgis.PyQt.QtGui import QColor, QFont
+from qgis.PyQt.QtCore import Qt
 
 from geest.utilities import log_message, resources_path
 
-from .base_report import BaseReport
+from .base_report import CHARCOAL, CYAN, GREY, MIST, BaseReport, _flat_fill
 
 
 class AnalysisReport(BaseReport):
@@ -96,8 +96,20 @@ class AnalysisReport(BaseReport):
             layer = QgsVectorLayer(uri, f"Study Area ({layer_name})", "ogr")
             if layer.isValid():
                 self.study_area_layer = layer
-                source_qml = resources_path("resources", "qml", "study_area_polygons.qml")
-                layer.loadNamedStyle(source_qml)
+                # Outline only: the default study-area style has a solid fill
+                # which, drawn over the result raster, blanks out the map
+                # ("white interior with a black outline"). The report must
+                # show the same styled raster the model tree shows, with just
+                # a thin boundary on top.
+                symbol = QgsFillSymbol.createSimple(
+                    {
+                        "color": "0,0,0,0",
+                        "outline_color": "51,51,51,255",
+                        "outline_width": "0.4",
+                        "outline_style": "solid",
+                    }
+                )
+                layer.setRenderer(QgsSingleSymbolRenderer(symbol))
                 # Add to project temporarily for rendering
                 QgsProject.instance().addMapLayer(layer, False)
                 self.temp_layers.append(layer)
@@ -116,18 +128,17 @@ class AnalysisReport(BaseReport):
         self.layout = QgsLayout(project)
         self.layout.initializeDefaults()
         self.load_template()
+        self.style_cover_page()
 
-        # Add a summary page
-        summary_text = ""  # set in template
-        summary_label = QgsLayoutItemLabel(self.layout)
-        summary_label.setText(summary_text)
-        summary_label.setFont(QFont("Arial", 12))
-        summary_label.adjustSizeToText()
-        summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=0)
-        self.layout.addLayoutItem(summary_label)
+        # Credits sit directly behind the cover so funders and developers
+        # get a designed, prominent home.
+        self.make_credits_page(current_page=1)
 
-        # Compute and add summary statistics for each layer on separate pages
-        current_page = 1
+        # Then the analysis overview and the dimension/factor pages.
+        current_page = self.create_detail_pages(current_page=2)
+
+        # Processing times live at the back of the report — they are
+        # technical bookkeeping, not analysis content.
         self.make_page(
             title="Processing Times",
             description_key="analysis_summary",
@@ -136,29 +147,63 @@ class AnalysisReport(BaseReport):
         )
         self.create_execution_time_layout(
             entries=self.extract_execution_times_with_colors(),
-            max_bar_width_mm=10.0,
             page=current_page,
         )
-
         current_page += 1
 
-        # Add pages for each indicator
-        self.create_detail_pages(current_page=current_page)
+    def _load_raster(self, layer_uri: str, title: str) -> Optional[QgsRasterLayer]:
+        """Load (and cache) a raster result layer, or None when unavailable.
 
-    def _add_map_page(self, title: str, description_key: str, layer_uri: str, current_page: int) -> bool:
-        """Add a page with a map to the report.
+        Validity is checked BEFORE any page is created, so an unreadable
+        result can never produce a blank page.
+        """
+        if not layer_uri:
+            return None
+        if not hasattr(self, "_raster_cache"):
+            self._raster_cache = {}
+        if layer_uri in self._raster_cache:
+            return self._raster_cache[layer_uri]
+        layer = QgsRasterLayer(layer_uri, title)
+        if not layer.isValid():
+            log_message(f"Layer {layer_uri} is invalid — omitted from report.", tag="GeoE3")
+            self._raster_cache[layer_uri] = None
+            return None
+        QgsProject.instance().addMapLayer(layer, False)
+        self.temp_layers.append(layer)
+        self._raster_cache[layer_uri] = layer
+        return layer
+
+    def _map_layers(self, layer: QgsRasterLayer) -> list:
+        """Raster plus the study area outline when available."""
+        layers = [layer]
+        if self.study_area_layer:
+            layers.append(self.study_area_layer)
+        return layers
+
+    def _add_map_page(
+        self,
+        title: str,
+        description_key: str,
+        layer_uri: str,
+        current_page: int,
+        minimaps: Optional[list] = None,
+    ) -> bool:
+        """Add a page with a large map and an optional grid of minimaps.
 
         Args:
             title: The title for the page.
             description_key: Key for the page description in self.page_descriptions.
             layer_uri: Path to the raster layer file.
             current_page: The current page number.
+            minimaps: Optional list of (caption, QgsRasterLayer) tuples laid
+                out as a grid beneath the main map.
 
         Returns:
-            bool: True if the page was successfully added, False otherwise.
+            bool: True if the page was added, False otherwise.
         """
-        if not layer_uri:
-            log_message(f"No layer URI for '{title}', skipping page", tag="GeoE3")
+        layer = self._load_raster(layer_uri, title)
+        if layer is None:
+            log_message(f"No usable layer for '{title}', skipping page", tag="GeoE3")
             return False
 
         self.make_page(
@@ -168,24 +213,55 @@ class AnalysisReport(BaseReport):
             show_header_and_footer=True,
         )
 
-        log_message(f"Adding {layer_uri} to map")
-        layer = QgsRasterLayer(layer_uri, title)
-
-        if not layer.isValid():
-            log_message(f"Layer {layer_uri} is invalid and cannot be added.", tag="GeoE3")
-            return True  # Page was created, even if map couldn't be added
-
-        # Add the layer to the project temporarily for rendering
-        QgsProject.instance().addMapLayer(layer, False)
-        self.temp_layers.append(layer)
-
-        # Build layers list: raster layer + study area outline (if available)
-        layers = [layer]
-        if self.study_area_layer:
-            layers.append(self.study_area_layer)
-
-        self.make_map(layers=layers, current_page=current_page, crs=layer.crs())
+        minimaps = [m for m in (minimaps or []) if m[1] is not None]
+        main_h = 105.0 if minimaps else 200.0
+        self.make_map(
+            layers=self._map_layers(layer),
+            current_page=current_page,
+            crs=layer.crs(),
+            x=15,
+            y=52,
+            map_width_mm=180,
+            map_height_mm=main_h,
+        )
+        if minimaps:
+            # 12 mm clearance leaves room for the main map's outside-frame
+            # coordinate annotations.
+            self._add_minimap_grid(minimaps, current_page, top=52 + main_h + 12)
         return True
+
+    def _add_minimap_grid(
+        self,
+        minimaps: list,
+        current_page: int,
+        top: float,
+        columns: int = 4,
+        bottom: float = 280.0,
+    ) -> None:
+        """Lay out (caption, layer) tuples as a captioned minimap grid."""
+        gap = 5.0
+        cell_w = (180.0 - (columns - 1) * gap) / columns
+        cell_h = cell_w + 7  # square map face + caption strip
+        max_rows = max(1, int((bottom - top + gap) // (cell_h + gap)))
+        capacity = max_rows * columns
+        if len(minimaps) > capacity:
+            log_message(
+                f"Minimap grid clipped to {capacity} of {len(minimaps)} entries on page {current_page}",
+                tag="GeoE3",
+            )
+            minimaps = minimaps[:capacity]
+        for index, (caption, layer) in enumerate(minimaps):
+            row, col = divmod(index, columns)
+            self.make_minimap(
+                caption=caption,
+                layers=self._map_layers(layer),
+                crs=layer.crs(),
+                current_page=current_page,
+                x=15 + col * (cell_w + gap),
+                y=top + row * (cell_h + gap),
+                w=cell_w,
+                h=cell_h,
+            )
 
     def _has_used_indicators(self, factor: dict) -> bool:
         """Check if a factor has any indicators that are not 'Do Not Use'.
@@ -225,63 +301,109 @@ class AnalysisReport(BaseReport):
         with open(self.model_path, "r", encoding="utf-8") as f:
             model = json.load(f)
 
-        # Print the analysis geoe3, geoe3 by population etc maps first
-        self.page_descriptions["geoe3_score_ghsl_masked"] = "GeoE3 Score GHSL Masked Analysis Map"
-        layer_uri = model.get("geoe3_score_ghsl_masked_result_file")
-        if self._add_map_page("GeoE3 Score GHSL Masked", "geoe3_score_ghsl_masked", layer_uri, current_page):
+        # --- Analysis overview: the main GeoE3 score map on top, then the
+        # dimension aggregates as minimaps, then any additional analysis
+        # products (population/mask variants) as further minimaps.
+        self.page_descriptions["analysis_overview"] = (
+            "The overall GeoE3 score, with the aggregated score for each "
+            "dimension and any derived analysis products shown below."
+        )
+        main_uri = model.get("geoe3_score_ghsl_masked_result_file") or model.get("result_file")
+        product_keys = [
+            ("result_file", "GeoE3 score"),
+            ("geoe3_score_ghsl_masked_result_file", "GHSL masked"),
+            ("geoe3_by_population_result_file", "By population"),
+            ("geoe3_score_by_population_ghsl_masked_result_file", "By population (GHSL)"),
+            ("opportunities_mask_result_file", "Opportunities mask"),
+            ("geoe3_by_opportunities_mask_result_file", "Score × opportunities"),
+            ("geoe3_by_population_by_opportunities_mask_result_file", "Population × opportunities"),
+        ]
+        dimension_minimaps = [
+            (dimension.get("name", ""), self._load_raster(dimension.get("result_file"), dimension.get("name", "")))
+            for dimension in model.get("dimensions", [])
+            if self._has_used_factors(dimension)
+        ]
+        product_minimaps = [
+            (label, self._load_raster(model.get(key), label))
+            for key, label in product_keys
+            if model.get(key) and model.get(key) != main_uri
+        ]
+        if self._add_map_page(
+            "Analysis Overview",
+            "analysis_overview",
+            main_uri,
+            current_page,
+            minimaps=dimension_minimaps + product_minimaps,
+        ):
             current_page += 1
 
-        # Iterate through dimensions, factors, and indicators
+        # --- One page per dimension: its map + a grid of factor minimaps
         for dimension in model.get("dimensions", []):
             dim_name = dimension.get("name", "")
 
-            # Skip dimensions with no used factors
             if not self._has_used_factors(dimension):
                 log_message(f"Skipping dimension '{dim_name}' - no used indicators", tag="GeoE3")
                 continue
 
-            # Add dimension page with map
+            used_factors = [factor for factor in dimension.get("factors", []) if self._has_used_indicators(factor)]
+
             self.page_descriptions[dim_name] = dimension.get(
                 "description", f"Aggregated analysis for dimension: {dim_name}"
             )
-            dim_layer_uri = dimension.get("result_file")
-            if dim_layer_uri:
-                if self._add_map_page(f"Dimension: {dim_name}", dim_name, dim_layer_uri, current_page):
-                    current_page += 1
+            # A dimension with a single factor aggregates to the same surface
+            # as that factor — a one-cell minimap grid would just repeat the
+            # main map, so skip it.
+            factor_minimaps = (
+                [
+                    (factor.get("name", ""), self._load_raster(factor.get("result_file"), factor.get("name", "")))
+                    for factor in used_factors
+                ]
+                if len(used_factors) > 1
+                else []
+            )
+            if self._add_map_page(
+                f"{dim_name} Dimension",
+                dim_name,
+                dimension.get("result_file"),
+                current_page,
+                minimaps=factor_minimaps,
+            ):
+                current_page += 1
 
-            for factor in dimension.get("factors", []):
+            # --- One page per factor: its map + a grid of indicator minimaps
+            for factor in used_factors:
                 factor_name = factor.get("name", "")
-
-                # Skip factors with no used indicators
-                if not self._has_used_indicators(factor):
-                    log_message(f"Skipping factor '{factor_name}' - no used indicators", tag="GeoE3")
-                    continue
-
-                # Add factor page with map
                 self.page_descriptions[factor_name] = factor.get(
                     "description", f"Aggregated analysis for factor: {factor_name}"
                 )
-                factor_layer_uri = factor.get("result_file")
-                if factor_layer_uri:
-                    if self._add_map_page(f"Factor: {factor_name}", factor_name, factor_layer_uri, current_page):
-                        current_page += 1
-
-                for indicator in factor.get("indicators", []):
-                    # Skip indicators that are not used
-                    analysis_mode = indicator.get("analysis_mode", "")
-                    if analysis_mode == "Do Not Use":
-                        log_message(
-                            f"Skipping indicator '{indicator.get('indicator', '')}' - analysis_mode is 'Do Not Use'",
-                            tag="GeoE3",
+                used_indicators = [
+                    indicator
+                    for indicator in factor.get("indicators", [])
+                    if indicator.get("analysis_mode", "") != "Do Not Use"
+                ]
+                # A factor with a single indicator produces the same surface
+                # as that indicator — skip the redundant one-cell grid.
+                indicator_minimaps = (
+                    [
+                        (
+                            indicator.get("indicator", ""),
+                            self._load_raster(indicator.get("result_file"), indicator.get("indicator", "")),
                         )
-                        continue
+                        for indicator in used_indicators
+                    ]
+                    if len(used_indicators) > 1
+                    else []
+                )
+                if self._add_map_page(
+                    f"{factor_name}",
+                    factor_name,
+                    factor.get("result_file"),
+                    current_page,
+                    minimaps=indicator_minimaps,
+                ):
+                    current_page += 1
 
-                    indicator_name = indicator.get("indicator", "")
-
-                    # Add indicator page with map
-                    layer_uri = indicator.get("result_file")
-                    if self._add_map_page(f"Indicator: {indicator_name}", factor_name, layer_uri, current_page):
-                        current_page += 1
+        return current_page
 
     def parse_iso_datetime(self, iso_str: str) -> Optional[datetime]:
         """Parse ISO 8601 datetime string safely.
@@ -387,74 +509,78 @@ class AnalysisReport(BaseReport):
 
         return results
 
-    def create_execution_time_layout(self, entries: list, max_bar_width_mm: float = 10.0, page: int = 1):
-        """Create a QGIS layout showing execution times with colored bars and labels.
+    def create_execution_time_layout(self, entries: list, max_bar_width_mm: float = 78.0, page: int = 1):
+        """Add a clean horizontal bar chart of indicator execution times.
+
+        Layout per row: indicator name right-aligned in a left column, a
+        length-encoded bar, and the duration at the bar's end. Rows carry a
+        subtle alternating tint. Indicators that were not run render as a
+        greyed label with no bar.
 
         Args:
             entries: Output from `extract_execution_times_with_colors()`.
-            max_bar_width_mm: Maximum width (in mm) for the bar representing the slowest task.
-            page: Page number in the layout to add the execution time bars to.
+            max_bar_width_mm: Bar width for the slowest indicator, in mm.
+            page: Page number to draw the chart on.
         """
-        y_offset = 80  # mm
-        row_height = 5  # mm
-        margin_left = 20  # mm
-        log_message(f"Entries: {entries}")
-        for i, entry in enumerate(entries[:28]):
-            y = y_offset + i * (row_height + 2)
+        top = 44.0
+        row_pitch = 7.0
+        bar_h = 3.6
+        label_x = 15.0
+        label_w = 72.0
+        bar_x = label_x + label_w + 3.0
+        max_rows = 32
 
-            # Add label
-            duration_label = QgsLayoutItemLabel(self.layout)
+        clipped = len(entries) > max_rows
+        for i, entry in enumerate(entries[:max_rows]):
+            y = top + i * row_pitch
             indicator = entry["indicator"]
             duration = entry["execution_time_minutes"]
 
-            # Show "Not run" for indicators that weren't executed
-            if duration is None:
-                duration_label.setText(f"{indicator} - Not run")
-            else:
-                duration_label.setText(f"{indicator} - {duration} min")
+            if i % 2 == 0:
+                self._rect(label_x - 1, y - 1.4, 181.0, row_pitch - 0.6, MIST, page)
 
-            duration_label.setFont(QFont("Arial", 10))
-            duration_label.adjustSizeToText()
-            duration_label.attemptMove(
-                QgsLayoutPoint(
-                    margin_left + 10.0 + max_bar_width_mm,
-                    y,
-                    QgsUnitTypes.LayoutUnit.LayoutMillimeters,
-                ),
-                page=page,
+            name = indicator if len(indicator) <= 52 else indicator[:49] + "…"
+            self._label(
+                name,
+                label_x,
+                y - 0.6,
+                label_w,
+                row_pitch,
+                page,
+                size=8,
+                color=CHARCOAL if duration is not None else GREY,
+                halign=Qt.AlignmentFlag.AlignRight,
             )
-            self.layout.addLayoutItem(duration_label)
 
-            # Skip bar if no timing data
-            if entry.get("color", None) is None or duration is None:
-                log_message(f"Skipping bar for '{indicator}' - not run")
+            if duration is None:
+                self._label("not run", bar_x, y - 0.6, 30, row_pitch, page, size=8, color=GREY)
                 continue
 
-            # Add bar (shape item)
+            bar_width = max(0.6, max_bar_width_mm * (entry.get("relative_time") or 0.0))
             bar = QgsLayoutItemShape(self.layout)
-            log_message(f"Processing entry: {entry}")
-            color = entry["color"]
-            bar_width = max_bar_width_mm * entry["relative_time"]
-
-            bar.attemptMove(
-                QgsLayoutPoint(
-                    margin_left,
-                    y,
-                    QgsUnitTypes.LayoutUnit.LayoutMillimeters,
-                ),
-                page=page,
-            )
-            bar.setFixedSize(QgsLayoutSize(bar_width, row_height, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
-
-            color = QColor(color)
-            symbol = QgsSimpleFillSymbolLayer(color=color)
-            log_message(f"Bar color: {color.name()}")
-            log_message(f"Bar width: {bar_width} mm")
-            log_message(f"Bar height: {row_height} mm")
-            symbol.setStrokeColor(QColor(0, 0, 0, 0))  # Set border color to transparent
-            bar_symbol = bar.symbol()
-            bar_symbol.deleteSymbolLayer(0)
-            bar_symbol.appendSymbolLayer(symbol)
-            bar.setSymbol(bar_symbol)
-
+            bar.attemptMove(QgsLayoutPoint(bar_x, y, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=page)
+            bar.setFixedSize(QgsLayoutSize(bar_width, bar_h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+            _flat_fill(bar, CYAN)
             self.layout.addLayoutItem(bar)
+
+            self._label(
+                f"{duration:g} min",
+                bar_x + bar_width + 2,
+                y - 0.6,
+                28,
+                row_pitch,
+                page,
+                size=8,
+                color=GREY,
+            )
+        if clipped:
+            self._label(
+                f"Showing the {max_rows} slowest steps of {len(entries)}.",
+                label_x,
+                top + max_rows * row_pitch + 2,
+                180,
+                6,
+                page,
+                size=8,
+                color=GREY,
+            )

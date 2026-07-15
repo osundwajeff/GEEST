@@ -65,6 +65,25 @@ def _execute_sql_with_retry(ds, sql: str, dialect: Optional[str] = None):
     return None
 
 
+def grid_cell_count(gpkg_path: str) -> int:
+    """Return the number of analysis grid cells, or -1 when unreadable.
+
+    An empty grid means every grid-first workflow would 'succeed' while
+    scoring nothing — callers use this to fail loudly instead.
+    """
+    import sqlite3
+
+    try:
+        connection = sqlite3.connect(gpkg_path)
+        try:
+            return connection.execute("SELECT COUNT(*) FROM study_area_grid").fetchone()[0]
+        finally:
+            connection.close()
+    except sqlite3.Error as error:
+        log_message(f"Could not count analysis grid cells: {error}", level=Qgis.Warning)
+        return -1
+
+
 def _checkpoint_wal(ds) -> None:
     """Force a WAL checkpoint on a GeoPackage dataset before closing.
 
@@ -1652,7 +1671,14 @@ def write_buffer_values_to_grid(
     Returns:
         Number of cells updated, or -1 on error.
     """
-    from qgis.core import QgsFeatureRequest, QgsSpatialIndex
+    from qgis.core import (
+        QgsCoordinateTransform,
+        QgsFeature,
+        QgsGeometry,
+        QgsProject,
+        QgsRectangle,
+        QgsSpatialIndex,
+    )
 
     if not os.path.exists(gpkg_path):
         log_message(f"GeoPackage not found: {gpkg_path}", level=Qgis.Warning)
@@ -1674,13 +1700,57 @@ def write_buffer_values_to_grid(
             log_message("Could not load study_area_grid layer", level=Qgis.Critical)
             return -1
 
-        # Create spatial index for buffer layer
-        buffer_index = QgsSpatialIndex(buffer_layer.getFeatures())
+        # Normalise the buffer features once: reproject when the CRS differs
+        # from the grid (previously a mismatch silently intersected nothing)
+        # and repair invalid geometries (network-analysis concave hulls are
+        # frequently self-intersecting; GEOS intersects() silently returns
+        # False for invalid inputs on stricter builds).
+        transform = None
+        if buffer_layer.crs() != grid_layer.crs():
+            log_message(
+                f"Buffer layer CRS {buffer_layer.crs().authid()} differs from grid CRS "
+                f"{grid_layer.crs().authid()} — reprojecting buffers on the fly",
+                level=Qgis.Warning,
+            )
+            transform = QgsCoordinateTransform(buffer_layer.crs(), grid_layer.crs(), QgsProject.instance())
+
+        buffer_geoms = {}
+        buffer_scores = {}
+        repaired = 0
+        for buffer_feature in buffer_layer.getFeatures():
+            geometry = QgsGeometry(buffer_feature.geometry())
+            if geometry.isEmpty():
+                continue
+            if transform is not None:
+                geometry.transform(transform)
+            if not geometry.isGeosValid():
+                geometry = geometry.makeValid()
+                repaired += 1
+                if geometry.isEmpty():
+                    continue
+            buffer_geoms[buffer_feature.id()] = geometry
+            buffer_scores[buffer_feature.id()] = buffer_feature.attribute(value_field)
+        if repaired:
+            log_message(f"Repaired {repaired} invalid buffer geometries before grid scoring")
+
+        # Create spatial index over the normalised geometries
+        buffer_index = QgsSpatialIndex()
+        for fid, geometry in buffer_geoms.items():
+            index_feature = QgsFeature(fid)
+            index_feature.setGeometry(geometry)
+            buffer_index.addFeature(index_feature)
 
         # Collect scores per grid cell
         grid_scores = {}
         total_features = grid_layer.featureCount()
         log_message(f"Processing {total_features} grid cells against buffer layer")
+        if total_features == 0:
+            log_message(
+                "study_area_grid contains no cells — nothing can be scored. "
+                "The study area needs to be re-created to regenerate the grid.",
+                level=Qgis.Critical,
+            )
+            return -1
 
         for i, grid_feature in enumerate(grid_layer.getFeatures()):
             grid_geom = grid_feature.geometry()
@@ -1696,11 +1766,10 @@ def write_buffer_values_to_grid(
 
             # Get actual intersecting features and their scores
             scores = []
-            request = QgsFeatureRequest().setFilterFids(candidate_ids)
-            for buffer_feature in buffer_layer.getFeatures(request):
-                buffer_geom = buffer_feature.geometry()
-                if buffer_geom.intersects(grid_geom):
-                    score = buffer_feature.attribute(value_field)
+            for candidate_id in candidate_ids:
+                buffer_geom = buffer_geoms.get(candidate_id)
+                if buffer_geom is not None and buffer_geom.intersects(grid_geom):
+                    score = buffer_scores.get(candidate_id)
                     if score is not None:
                         scores.append(float(score))
 
@@ -1721,6 +1790,20 @@ def write_buffer_values_to_grid(
                 feedback.setProgress((i / total_features) * 50)
 
         log_message(f"Found {len(grid_scores)} grid cells with intersecting buffers")
+        if not grid_scores and buffer_geoms:
+            # Zero intersections with real buffers present is almost always a
+            # spatial/validity problem — leave forensics in the log.
+            buffer_extent = QgsRectangle()
+            for geometry in buffer_geoms.values():
+                buffer_extent.combineExtentWith(geometry.boundingBox())
+            log_message(
+                "No grid cells intersect any buffer. "
+                f"Grid extent: {grid_layer.extent().toString(0)} | "
+                f"Buffer extent: {buffer_extent.toString(0)} | "
+                f"Buffers: {len(buffer_geoms)} (repaired: {repaired}) | "
+                f"Buffer CRS: {buffer_layer.crs().authid()} | Grid CRS: {grid_layer.crs().authid()}",
+                level=Qgis.Warning,
+            )
 
         # Update grid using SQL batched updates
         ds = _open_gpkg_for_write(gpkg_path)
