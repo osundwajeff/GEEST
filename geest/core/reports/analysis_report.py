@@ -140,8 +140,11 @@ class AnalysisReport(BaseReport):
         summary_label.attemptMove(QgsLayoutPoint(80, 200, QgsUnitTypes.LayoutUnit.LayoutMillimeters), page=0)
         self.layout.addLayoutItem(summary_label)
 
-        # Compute and add summary statistics for each layer on separate pages
-        current_page = 1
+        # Content first: the analysis overview and the dimension/factor pages.
+        current_page = self.create_detail_pages(current_page=1)
+
+        # Processing times live at the back of the report — they are
+        # technical bookkeeping, not analysis content.
         self.make_page(
             title="Processing Times",
             description_key="analysis_summary",
@@ -152,11 +155,10 @@ class AnalysisReport(BaseReport):
             entries=self.extract_execution_times_with_colors(),
             page=current_page,
         )
-
         current_page += 1
 
-        # Add pages for each indicator
-        self.create_detail_pages(current_page=current_page)
+        # Closing page: funding credits and data attribution.
+        self.make_attribution_page(current_page)
 
     def _load_raster(self, layer_uri: str, title: str) -> Optional[QgsRasterLayer]:
         """Load (and cache) a raster result layer, or None when unavailable.
@@ -308,23 +310,39 @@ class AnalysisReport(BaseReport):
         with open(self.model_path, "r", encoding="utf-8") as f:
             model = json.load(f)
 
-        # --- Analysis overview: overall score map + the dimension minimaps
+        # --- Analysis overview: the main GeoE3 score map on top, then the
+        # dimension aggregates as minimaps, then any additional analysis
+        # products (population/mask variants) as further minimaps.
         self.page_descriptions["analysis_overview"] = (
-            "Overall GeoE3 score masked to GHSL settlement areas, with the "
-            "aggregated score for each dimension shown below."
+            "The overall GeoE3 score, with the aggregated score for each "
+            "dimension and any derived analysis products shown below."
         )
+        main_uri = model.get("geoe3_score_ghsl_masked_result_file") or model.get("result_file")
+        product_keys = [
+            ("result_file", "GeoE3 score"),
+            ("geoe3_score_ghsl_masked_result_file", "GHSL masked"),
+            ("geoe3_by_population_result_file", "By population"),
+            ("geoe3_score_by_population_ghsl_masked_result_file", "By population (GHSL)"),
+            ("opportunities_mask_result_file", "Opportunities mask"),
+            ("geoe3_by_opportunities_mask_result_file", "Score × opportunities"),
+            ("geoe3_by_population_by_opportunities_mask_result_file", "Population × opportunities"),
+        ]
         dimension_minimaps = [
             (dimension.get("name", ""), self._load_raster(dimension.get("result_file"), dimension.get("name", "")))
             for dimension in model.get("dimensions", [])
             if self._has_used_factors(dimension)
         ]
-        layer_uri = model.get("geoe3_score_ghsl_masked_result_file")
+        product_minimaps = [
+            (label, self._load_raster(model.get(key), label))
+            for key, label in product_keys
+            if model.get(key) and model.get(key) != main_uri
+        ]
         if self._add_map_page(
             "Analysis Overview",
             "analysis_overview",
-            layer_uri,
+            main_uri,
             current_page,
-            minimaps=dimension_minimaps,
+            minimaps=dimension_minimaps + product_minimaps,
         ):
             current_page += 1
 
@@ -394,9 +412,7 @@ class AnalysisReport(BaseReport):
                 ):
                     current_page += 1
 
-        # --- Closing page: funding credits and data attribution (kept off
-        # the content pages so every other footer stays minimal).
-        self.make_attribution_page(current_page)
+        return current_page
 
     def parse_iso_datetime(self, iso_str: str) -> Optional[datetime]:
         """Parse ISO 8601 datetime string safely.
