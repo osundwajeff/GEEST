@@ -21,10 +21,46 @@ from qgis.core import (
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor
 
 from geest.utilities import log_message, resources_path
 
-from .base_report import CHARCOAL, CYAN, GREY, MIST, BaseReport, _flat_fill
+from .base_report import CHARCOAL, CONTENT_W, CYAN, GREY, HEADER_H, MARGIN, MIST, NAVY, RULE, BaseReport, _flat_fill
+
+# The five score classes used by every result map in this report
+# (see resources/qml/analysis.qml): range, name, colour, significance.
+SCORE_CLASSES = [
+    (
+        "0 – 1",
+        "Very Low Enablement",
+        "#d7191c",
+        "Conditions offer little or no support for employment and " "entrepreneurship; major barriers dominate.",
+    ),
+    (
+        "1 – 2",
+        "Low Enablement",
+        "#fdae61",
+        "Support is limited and significant barriers remain across most " "measured factors.",
+    ),
+    (
+        "2 – 3",
+        "Moderately Enabling",
+        "#ffffbf",
+        "Some supportive conditions exist, but their coverage or quality " "is uneven.",
+    ),
+    (
+        "3 – 4",
+        "Enabling",
+        "#bce1b8",
+        "Conditions generally support access to employment and business " "opportunities.",
+    ),
+    (
+        "4 – 5",
+        "Highly Enabling",
+        "#2c7bb6",
+        "Strong, well-developed enabling conditions across the measured " "factors.",
+    ),
+]
 
 
 class AnalysisReport(BaseReport):
@@ -59,6 +95,13 @@ class AnalysisReport(BaseReport):
             "analysis_summary"
         ] = """
         This shows the relative elapsed time for each analysis step. The time is in minutes.
+        """
+        self.page_descriptions[
+            "legend"
+        ] = """
+        Every map in this report uses the same five-class colour scheme, applied to
+        scores from 0 to 5. This page explains what the colours mean and how the
+        values are derived.
         """
 
     def cleanup(self):
@@ -134,8 +177,11 @@ class AnalysisReport(BaseReport):
         # get a designed, prominent home.
         self.make_credits_page(current_page=1)
 
+        # Explain the colour scheme before showing any maps.
+        self.make_legend_page(current_page=2)
+
         # Then the analysis overview and the dimension/factor pages.
-        current_page = self.create_detail_pages(current_page=2)
+        current_page = self.create_detail_pages(current_page=3)
 
         # Processing times live at the back of the report — they are
         # technical bookkeeping, not analysis content.
@@ -150,6 +196,103 @@ class AnalysisReport(BaseReport):
             page=current_page,
         )
         current_page += 1
+
+    def make_legend_page(self, current_page: int) -> None:
+        """Add the legend page: the score colour scheme and what it means.
+
+        A segmented 0-5 colour bar mirrors the ramp used on every result
+        map (resources/qml/analysis.qml), followed by one row per class
+        explaining its significance, and a note on how scores are derived.
+        """
+        self.make_page(
+            title="Reading the Maps",
+            description_key="legend",
+            current_page=current_page,
+            show_header_and_footer=True,
+        )
+        # Segmented colour bar with 0-5 tick labels.
+        bar_y = HEADER_H + 26
+        bar_h = 10
+        segment_w = CONTENT_W / len(SCORE_CLASSES)
+        # Hairline backing keeps the palest class visible against the page.
+        self._rect(MARGIN - 0.3, bar_y - 0.3, CONTENT_W + 0.6, bar_h + 0.6, RULE, current_page)
+        for i, (_, _, colour, _) in enumerate(SCORE_CLASSES):
+            self._rect(MARGIN + i * segment_w, bar_y, segment_w, bar_h, QColor(colour), current_page)
+        for i in range(len(SCORE_CLASSES) + 1):
+            self._label(
+                str(i),
+                MARGIN + i * segment_w - 10,
+                bar_y + bar_h + 1.5,
+                20,
+                5,
+                current_page,
+                size=8.5,
+                color=GREY,
+                halign=Qt.AlignmentFlag.AlignHCenter,
+            )
+
+        # One row per class: swatch, range and name, significance.
+        row_top = bar_y + bar_h + 14
+        row_pitch = 23
+        for i, (score_range, name, colour, meaning) in enumerate(SCORE_CLASSES):
+            y = row_top + i * row_pitch
+            self._rect(MARGIN - 0.3, y - 0.3, 22.6, 14.6, RULE, current_page)
+            self._rect(MARGIN, y, 22, 14, QColor(colour), current_page)
+            self._label(
+                f"{score_range}   {name}",
+                MARGIN + 28,
+                y,
+                CONTENT_W - 28,
+                7,
+                current_page,
+                size=11.5,
+                color=NAVY,
+                bold=True,
+            )
+            self._label(
+                meaning,
+                MARGIN + 28,
+                y + 7,
+                CONTENT_W - 28,
+                7,
+                current_page,
+                size=9.5,
+                color=GREY,
+            )
+
+        # How the values are derived.
+        note_y = row_top + len(SCORE_CLASSES) * row_pitch + 6
+        note_h = 42
+        self._rect(MARGIN, note_y, CONTENT_W, note_h, MIST, current_page)
+        self._rect(MARGIN, note_y, 2.2, note_h, CYAN, current_page)
+        self._label(
+            "How the scores are calculated",
+            MARGIN + 8,
+            note_y + 4.5,
+            CONTENT_W - 16,
+            7,
+            current_page,
+            size=12,
+            color=NAVY,
+            bold=True,
+        )
+        note_body = self._label(
+            "<p>Each indicator scores every analysis grid cell from 0 to 5. Indicator "
+            "scores combine into factor scores, factor scores into dimension scores, "
+            "and dimension scores into the overall GeoE3 score, using the weights "
+            "configured in the model. Blank cells fall outside the study area or have "
+            "no data; a score of 0 can also mean the measured service is out of reach "
+            "— for example, locations with no road-network access.</p>",
+            MARGIN + 8,
+            note_y + 13,
+            CONTENT_W - 16,
+            note_h - 17,
+            current_page,
+            size=9.5,
+            color=CHARCOAL,
+            html=True,
+        )
+        note_body.setHAlign(Qt.AlignmentFlag.AlignJustify)
 
     def _load_raster(self, layer_uri: str, title: str) -> Optional[QgsRasterLayer]:
         """Load (and cache) a raster result layer, or None when unavailable.
