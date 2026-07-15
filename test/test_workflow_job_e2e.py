@@ -169,6 +169,61 @@ class TestWorkflowJobEndToEnd(unittest.TestCase):
         job = manager.add_workflow(healthy, cell_size_m=1000.0, analysis_scale="local")
         self.assertIsNotNone(job, "a healthy indicator must still queue after a broken one")
 
+    def test_empty_analysis_grid_fails_loudly(self):
+        """A run against an empty study_area_grid must FAIL, not 'complete'.
+
+        Field regression: a working directory whose grid was never populated
+        let every grid-first workflow report 'Workflow Completed' while
+        writing empty rasters ('Processing 0 grid cells against buffer
+        layer'). The workflow must fail with an accessible message telling
+        the user to re-create the study area.
+        """
+        import sqlite3
+
+        from geest.core.grid_column_utils import grid_cell_count
+
+        # Fresh fixture copy so the shared working directory stays intact.
+        test_dir = prepare_fixtures()
+        working_dir = os.path.join(test_dir, "wee_score")
+        gpkg = os.path.join(working_dir, "study_area", "study_area.gpkg")
+        self.assertGreater(grid_cell_count(gpkg), 0, "fixture grid should start populated")
+        connection = sqlite3.connect(gpkg)
+        connection.execute("DELETE FROM study_area_grid")
+        connection.commit()
+        connection.close()
+        self.assertEqual(grid_cell_count(gpkg), 0)
+
+        settings = QSettings()
+        previous = settings.value("last_working_directory", "")
+        settings.setValue("last_working_directory", working_dir)
+        try:
+            points = os.path.join(os.path.dirname(__file__), "test_data", "points", "points.shp")
+            item = make_indicator(
+                {
+                    "analysis_mode": "use_point_per_cell",
+                    "id": "e2e_empty_grid",
+                    "factor_weighting": 1.0,
+                    "description": "E2E empty grid",
+                    "result": "Not Run",
+                    "point_per_cell_shapefile": points,
+                }
+            )
+            manager = WorkflowQueueManager(pool_size=1)
+            job = manager.add_workflow(item, cell_size_m=1000.0, analysis_scale="local")
+            self.assertIsNotNone(job, "the job itself is valid — failure happens at execution")
+
+            manager.start_processing_in_foreground()
+
+            result = item.attribute("result", "")
+            self.assertNotIn("Completed", result, "an empty grid must never produce a completed run")
+            self.assertIn("Error", result)
+            error_text = item.attribute("error", "")
+            self.assertIn("grid", error_text.lower())
+            self.assertIn("re-create the study area", error_text.lower())
+            self.assertEqual(item.getStatus(), "Workflow failed")
+        finally:
+            settings.setValue("last_working_directory", previous)
+
     def test_unexpected_exception_is_trapped_not_propagated(self):
         """Even a non-WorkflowNotConfiguredError must not abort queueing."""
         from unittest import mock

@@ -65,6 +65,25 @@ def _execute_sql_with_retry(ds, sql: str, dialect: Optional[str] = None):
     return None
 
 
+def grid_cell_count(gpkg_path: str) -> int:
+    """Return the number of analysis grid cells, or -1 when unreadable.
+
+    An empty grid means every grid-first workflow would 'succeed' while
+    scoring nothing — callers use this to fail loudly instead.
+    """
+    import sqlite3
+
+    try:
+        connection = sqlite3.connect(gpkg_path)
+        try:
+            return connection.execute("SELECT COUNT(*) FROM study_area_grid").fetchone()[0]
+        finally:
+            connection.close()
+    except sqlite3.Error as error:
+        log_message(f"Could not count analysis grid cells: {error}", level=Qgis.Warning)
+        return -1
+
+
 def _checkpoint_wal(ds) -> None:
     """Force a WAL checkpoint on a GeoPackage dataset before closing.
 
@@ -1681,6 +1700,13 @@ def write_buffer_values_to_grid(
         grid_scores = {}
         total_features = grid_layer.featureCount()
         log_message(f"Processing {total_features} grid cells against buffer layer")
+        if total_features == 0:
+            log_message(
+                "study_area_grid contains no cells — nothing can be scored. "
+                "The study area needs to be re-created to regenerate the grid.",
+                level=Qgis.Critical,
+            )
+            return -1
 
         for i, grid_feature in enumerate(grid_layer.getFeatures()):
             grid_geom = grid_feature.geometry()
