@@ -363,9 +363,22 @@ class BaseReport:
 
         map_item.attemptResize(QgsLayoutSize(map_width_mm, map_height_mm, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
-        # CRS and extent must be set before the annotation grid is attached,
-        # otherwise the grid computes against the default (infinite) extent
-        # and proj logs 'point outside of projection domain' errors.
+        # ⚠️ Ordering matters for thread safety: the report is built inside a
+        # QgsTask worker thread, and mutating CRS/extent on a map item that
+        # is not yet part of the layout spawns render objects parented across
+        # threads ("QObject::setParent ... different thread" warnings
+        # followed by a segfault). Add the item to the layout FIRST, then
+        # configure it, then attach the grid (after the extent is valid so
+        # proj never sees the default infinite extent).
+        self.layout.addLayoutItem(map_item)
+        # Thin charcoal neatline around the map
+        map_item.setFrameEnabled(True)
+        map_item.setFrameStrokeColor(CHARCOAL)
+        map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.3))
+        # The map is pinned to the data CRS: transforming into the *project*
+        # CRS hangs inside proj when the project has no CRS set (headless
+        # report generation, fresh projects) and made report maps depend on
+        # whatever CRS the user's project happened to use.
         map_item.setCrs(crs)
         map_item.setExtent(new_extent)
 
@@ -405,16 +418,6 @@ class BaseReport:
             grid.setFramePenSize(0.2)
             map_item.grids().addGrid(grid)
 
-        self.layout.addLayoutItem(map_item)
-        # Thin charcoal neatline around the map
-        map_item.setFrameEnabled(True)
-        map_item.setFrameStrokeColor(CHARCOAL)
-        map_item.setFrameStrokeWidth(QgsLayoutMeasurement(0.3))
-        # Note: the map is pinned to the data CRS (set above, before the
-        # grid). The previous approach transformed the extent into the
-        # *project* CRS, which hangs inside proj when the project has no CRS
-        # set (headless report generation, fresh projects) and made report
-        # maps depend on whatever CRS the user's project happened to use.
         map_item.refresh()
 
     def make_minimap(
