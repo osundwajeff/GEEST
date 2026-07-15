@@ -1371,6 +1371,22 @@ class StudyAreaProcessingTask(QgsTask):
         self.termination_reason = ""
         self.termination_detail = ""
         self._set_sqlite_write_safety_options()
+
+        # Regional scale grids are generated with H3 — without the library
+        # every chunk task quietly returns no cells and the study area ends
+        # up with an empty grid. Fail fast with a clear message instead.
+        if self.analysis_scale == "regional":
+            try:
+                import h3  # noqa: F401
+            except ImportError:
+                self._set_termination_reason(
+                    reason="The H3 library is not available.",
+                    detail="Regional scale analysis grids are built with H3 hexagons, but the "
+                    "H3 python library is not installed in this QGIS environment. Install it "
+                    "(e.g. pip install h3) and re-create the study area.",
+                )
+                return False
+
         try:
             # 1) Create the bounding box as a single polygon feature
             #    and save to GeoPackage
@@ -1570,9 +1586,12 @@ class StudyAreaProcessingTask(QgsTask):
         """Check the study area GeoPackage after processing, healing in place.
 
         Raises:
-            RuntimeError: If the GeoPackage is corrupt and could not be healed.
+            RuntimeError: If the GeoPackage is corrupt and could not be
+                healed, or if the analysis grid ended up empty (a study area
+                without grid cells silently breaks every later analysis).
         """
         from geest.core.gpkg_doctor import heal_geopackage
+        from geest.core.grid_column_utils import grid_cell_count
 
         report = heal_geopackage(self.gpkg_path, log=lambda message: log_message(message, tag="GeoE3"))
         if report.was_corrupt:
@@ -1583,6 +1602,16 @@ class StudyAreaProcessingTask(QgsTask):
             )
         if not report.healthy:
             raise RuntimeError(f"Study area GeoPackage is corrupt and could not be self-healed: {report.summary()}")
+
+        cell_count = grid_cell_count(self.gpkg_path)
+        log_message(f"Analysis grid contains {cell_count} cells", tag="GeoE3")
+        if cell_count == 0:
+            raise RuntimeError(
+                "Study area creation produced an EMPTY analysis grid — no grid cells were "
+                "written, so analyses would silently produce empty results. For Regional "
+                "scale this can happen when the H3 library is unavailable in the QGIS "
+                "python environment. Check the logs from the grid creation step."
+            )
 
     def _set_termination_reason(self, reason: str, detail: str = "") -> None:
         """Store safe, user-facing termination text for the UI."""

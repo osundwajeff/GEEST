@@ -574,7 +574,15 @@ class TreePanel(QWidget):
 
         def _check(task) -> bool:
             from geest.core.gpkg_doctor import heal_geopackage
+            from geest.core.grid_column_utils import grid_cell_count
 
+            # Breadcrumb for grid-truncation forensics: every health check
+            # records the cell count so logs bracket any loss of grid data.
+            log_message(
+                f"GeoPackage health check ({reason}): analysis grid has {grid_cell_count(gpkg_path)} cells",
+                tag="GeoE3",
+                level=Qgis.Info,
+            )
             report = heal_geopackage(
                 gpkg_path,
                 log=lambda message: log_message(message, tag="GeoE3", level=Qgis.Warning),
