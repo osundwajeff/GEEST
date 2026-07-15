@@ -228,9 +228,9 @@ class OpenProjectPanel(FORM_CLASS, QWidget):
     def set_font_size(self):
         """⚙️ Set font size."""
         panel_width = self.label.rect().width()
-        title_size = int(linear_interpolation(panel_width, 14, 18, 400, 600))
-        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
-        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
+        title_size = int(linear_interpolation(panel_width, 14, 18, 400, 800))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
+        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
 
         title_font = QFont("Arial", title_size)
         title_font.setWeight(QFont.Weight.DemiBold)

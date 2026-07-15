@@ -816,9 +816,9 @@ class CreateProjectPanel(FORM_CLASS, QWidget):
         panel_width = self.description.rect().width()
 
         title_size = int(linear_interpolation(panel_width, 16, 20, 400, 800))
-        subtitle_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
-        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
-        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
+        subtitle_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
+        control_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
 
         self.label_2.setFont(QFont("Arial", title_size))
 

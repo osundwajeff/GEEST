@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Dict, List
 
 from qgis.core import (
-    QgsApplication,
     Qgis,
+    QgsApplication,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsGeometry,
@@ -161,7 +161,7 @@ class S2SPanel(FORM_CLASS, QWidget):
         try:
             aoi_layer.dataProvider().reloadData()
             aoi_layer.updateExtents()
-        except Exception:
+        except Exception:  # nosec B110 — best-effort cache refresh; stale reads are handled below
             pass
 
         aoi_feature = self._build_aoi_feature(aoi_layer)
@@ -744,7 +744,7 @@ class S2SPanel(FORM_CLASS, QWidget):
 
     def set_font_size(self):
         """Set responsive font sizes for labels and controls."""
-        font_size = int(linear_interpolation(self.description.rect().width(), 12, 16, 400, 600))
+        font_size = int(linear_interpolation(self.description.rect().width(), 12, 16, 400, 800))
         font = QFont("Arial", font_size)
 
         self.description.setFont(font)

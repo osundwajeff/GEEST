@@ -82,7 +82,7 @@ class CreditsPanel(FORM_CLASS, QWidget):
         """⚙️ Set font size."""
         panel_width = self.description.rect().width()
         title_size = int(linear_interpolation(panel_width, 16, 20, 400, 800))
-        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 600))
+        content_size = int(linear_interpolation(panel_width, 12, 16, 400, 800))
         footer_size = int(linear_interpolation(panel_width, 11, 14, 400, 800))
 
         title_font = QFont("Arial", title_size)
