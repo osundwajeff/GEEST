@@ -26,6 +26,25 @@ class TestGeoE3DockConstruction(unittest.TestCase):
         dock = GeoE3Dock(parent=PARENT, json_file=resources_path("resources", "model.json"))
         self.assertGreater(dock.stacked_widget.count(), 0)
 
+    def test_ors_next_with_stale_working_directory_is_survivable(self):
+        """Next on the ORS panel with a vanished project folder must not raise.
+
+        This slot runs from a Qt signal: on PyQt6 an exception escaping it
+        aborts QGIS (qFatal), so a stale working directory (moved/renamed
+        project folder) has to end in a message-bar warning instead.
+        """
+        dock = GeoE3Dock(parent=PARENT, json_file=resources_path("resources", "model.json"))
+        for stale in ("/no/such/folder", "", None):
+            dock.create_project_widget.working_dir = stale
+            dock.tree_widget.working_directory = ""
+            before = dock.stacked_widget.currentIndex()
+            dock._open_road_network_from_ors()  # must not raise
+            self.assertEqual(
+                dock.stacked_widget.currentIndex(),
+                before,
+                f"panel switched despite invalid working directory {stale!r}",
+            )
+
     def test_dock_area_to_int_portable(self):
         """Enum → int works on PyQt5 sip enums and PyQt6 pure Flags alike."""
         self.assertEqual(_dock_area_to_int(Qt.DockWidgetArea.LeftDockWidgetArea), 1)
