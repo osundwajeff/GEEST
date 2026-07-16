@@ -40,6 +40,8 @@ from geest.core.algorithms import (
 )
 from geest.core.constants import GDAL_OUTPUT_DATA_TYPE
 from geest.core.grid_column_utils import (
+    clear_grid_column,
+    fill_grid_column_zero_for_area,
     rasterize_grid_column,
     write_raster_values_to_grid,
 )
@@ -157,6 +159,8 @@ class WorkflowBase(QObject):
         self.analysis_mode = self.item.attribute("analysis_mode", "")
         # Grid-first mode: if True, skip raster-to-grid sampling since grid is already populated
         self.use_grid_first = False
+        # Track if grid column has been cleared (for fallback paths that skip _process_grid_first)
+        self._grid_column_cleared = False
         self.updateProgress(0.0)
         self.output_filename = self.attributes.get("output_filename", "")
         self.feedback.progressChanged.connect(self.updateProgress)
@@ -672,6 +676,8 @@ class WorkflowBase(QObject):
                                     index=index,
                                     area_name=area_name,
                                 )
+                                if self.use_grid_first and area_name:
+                                    self._apply_grid_column_zero_fallback(area_name)
                                 if not raster_output:
                                     log_message(
                                         f"Neutral fallback failed for {self.workflow_name} in area {area_name}; skipping area.",
@@ -731,6 +737,8 @@ class WorkflowBase(QObject):
                             index=index,
                             area_name=area_name,
                         )
+                        if self.use_grid_first and area_name:
+                            self._apply_grid_column_zero_fallback(area_name)
                     if not raster_output:
                         raise RuntimeError(
                             f"{self.workflow_name} produced no raster output for area {area_name} (index {index})."
@@ -856,6 +864,25 @@ class WorkflowBase(QObject):
                 level=Qgis.Warning,
             )
             return None
+
+    def _apply_grid_column_zero_fallback(self, area_name: str) -> None:
+        """Fill grid column with 0 for an area when no features are present.
+
+        Called from neutral fallback paths when use_grid_first is True.
+        Clears the column once per workflow run, then sets 0 for the area's cells.
+
+        Args:
+            area_name: The area_name identifying which grid cells to update.
+        """
+        if not self._grid_column_cleared:
+            clear_grid_column(self.gpkg_path, self.layer_id)
+            self._grid_column_cleared = True
+
+        fill_grid_column_zero_for_area(
+            gpkg_path=self.gpkg_path,
+            column_name=self.layer_id,
+            area_name=area_name,
+        )
 
     def _create_workflow_directory(self) -> str:
         """
