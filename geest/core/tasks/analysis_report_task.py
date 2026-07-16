@@ -5,13 +5,11 @@ This module contains the QgsTask for generating analysis reports in the backgrou
 """
 
 import os
-import platform
-import subprocess  # nosec B404
 
 from qgis.core import Qgis, QgsTask
 
 from geest.core.reports.analysis_report import AnalysisReport
-from geest.utilities import log_message
+from geest.utilities import log_message, open_with_system_handler
 
 
 class AnalysisReportTask(QgsTask):
@@ -72,18 +70,9 @@ class AnalysisReportTask(QgsTask):
             result: True if task succeeded, False otherwise.
         """
         if result:
-            try:
-                # Open the PDF using the system PDF viewer
-                if os.name == "nt":  # Windows
-                    os.startfile(self.pdf_path)  # nosec B606
-                else:  # macOS and Linux
-                    system = platform.system().lower()
-                    if system == "darwin":  # macOS
-                        subprocess.run(["open", self.pdf_path], check=False)  # nosec B603 B607
-                    else:  # Linux
-                        subprocess.run(["xdg-open", self.pdf_path], check=False)  # nosec B603 B607
-            except Exception as e:
-                log_message(f"Could not open PDF viewer: {e}", tag="GeoE3", level=Qgis.Warning)
+            # Open the PDF using the system PDF viewer (detached — this
+            # runs on the main thread and must not block the event loop).
+            open_with_system_handler(self.pdf_path)
         else:
             log_message("Analysis report generation failed.", tag="GeoE3", level=Qgis.Critical)
 

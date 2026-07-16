@@ -554,6 +554,33 @@ def linear_interpolation(
     return result
 
 
+def open_with_system_handler(path: str) -> None:
+    """Open a file or folder with the default system application, detached.
+
+    This must never block the calling (QGIS main) thread and must never
+    join the viewer to QGIS's process group: subprocess.run freezes the
+    event loop until the viewer exits, leaving QGIS unresponsive behind
+    the viewer window, and force-closing the viewer then takes QGIS down
+    with it.
+
+    Args:
+        path (str): File or directory to open.
+    """
+    try:
+        if os.name == "nt":  # Windows
+            os.startfile(path)  # nosec B606
+            return
+        opener = "open" if platform.system().lower() == "darwin" else "xdg-open"
+        subprocess.Popen(  # nosec B603 B607
+            [opener, path],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        log_message(f"Could not open '{path}' with the system handler: {e}", level=Qgis.Warning)
+
+
 def vector_layer_type(layer: QgsVectorLayer) -> str:
     """
     Determines if a given QgsVectorLayer is a GeoPackage or a Shapefile.

@@ -6,9 +6,7 @@ This module contains functionality for tree panel.
 
 import json
 import os
-import platform
 import shutil
-import subprocess  # nosec B404
 import traceback
 from functools import partial
 from logging import getLogger
@@ -72,7 +70,7 @@ from geest.gui.dialogs import (
 )
 from geest.gui.views import JsonTreeModel, JsonTreeView
 from geest.gui.widgets import SolidMenu
-from geest.utilities import log_message, resources_path, theme_stylesheet
+from geest.utilities import log_message, open_with_system_handler, resources_path, theme_stylesheet
 
 
 class TreePanel(QWidget):
@@ -422,10 +420,7 @@ class TreePanel(QWidget):
 
         if msg_box.clickedButton() == open_folder_button:
             if self.working_directory:
-                if os.name == "nt":
-                    os.startfile(self.working_directory)  # nosec B606
-                elif os.name == "posix":
-                    subprocess.run(["xdg-open", self.working_directory], check=False)  # nosec B603 B607
+                open_with_system_handler(self.working_directory)
                 return
 
         if reply == QMessageBox.StandardButton.No or reply == QMessageBox.DialogCode.Rejected:
@@ -1211,18 +1206,9 @@ class TreePanel(QWidget):
             report.export_pdf(os.path.join(self.working_directory, "study_area_report.pdf"))
             self.overall_progress_bar.setValue(90)
 
-        # open the pdf using the system PDF viewer
-        # Windows
-        if os.name == "nt":  # Windows
-            os.startfile(os.path.join(self.working_directory, "study_area_report.pdf"))  # nosec B606
-        else:  # macOS and Linux
-            system = platform.system().lower()
-            if system == "darwin":  # macOS
-                pdf_path = os.path.join(self.working_directory, "study_area_report.pdf")
-                subprocess.run(["open", pdf_path], check=False)  # nosec B603 B607
-            else:  # Linux
-                pdf_path = os.path.join(self.working_directory, "study_area_report.pdf")
-                subprocess.run(["xdg-open", pdf_path], check=False)  # nosec B603 B607
+        # Open the pdf using the system PDF viewer (detached — a blocking
+        # call here freezes the QGIS event loop behind the viewer window).
+        open_with_system_handler(os.path.join(self.working_directory, "study_area_report.pdf"))
         self.overall_progress_bar.setValue(100)
         self.overall_progress_bar.setVisible(False)
 
@@ -1405,11 +1391,7 @@ class TreePanel(QWidget):
             )
         log_message(f"Opening working directory: {working_directory}")
         if working_directory:
-            if os.name == "nt":
-                os.startfile(working_directory)  # nosec B606
-            elif os.name == "posix":
-                log_message("Using xdg-open to open the working directory.")
-                subprocess.run(["xdg-open", working_directory], check=False)  # nosec B603 B607
+            open_with_system_handler(working_directory)
         else:
             QMessageBox.warning(self, "No Working Directory", "The working directory is not set.")
 
@@ -1419,10 +1401,7 @@ class TreePanel(QWidget):
         log_file_path = logger.handlers[0].baseFilename
 
         if os.path.exists(log_file_path):
-            if os.name == "nt":
-                os.startfile(log_file_path)  # nosec B606
-            elif os.name == "posix":
-                subprocess.run(["xdg-open", log_file_path], check=False)  # nosec B603 B607
+            open_with_system_handler(log_file_path)
         else:
             QMessageBox.warning(self, "Log File Not Found", "The log file does not exist.")
 
