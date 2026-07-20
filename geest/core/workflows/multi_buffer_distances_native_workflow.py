@@ -31,6 +31,7 @@ from geest.core.grid_column_utils import (
     clear_grid_column,
     rasterize_grid_column,
     write_buffer_values_to_grid,
+    write_percentage_scores_to_grid,
 )
 from geest.core.workflows.mappings import MAPPING_REGISTRY
 from geest.utilities import log_message
@@ -387,14 +388,23 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
 
         # Write buffer scores to grid cells
         log_message(f"Writing buffer scores to grid column {self.layer_id}")
-        write_buffer_values_to_grid(
-            gpkg_path=self.gpkg_path,
-            column_name=self.layer_id,
-            buffer_layer=scored_buffers,
-            value_field="value",
-            aggregation_method="MAX",
-            feedback=self.feedback,
-        )
+        if self.use_simple_buffer and self.buffer_distance:
+            write_percentage_scores_to_grid(
+                gpkg_path=self.gpkg_path,
+                column_name=self.layer_id,
+                buffer_layer=scored_buffers,
+                percentage_scores=self.percentage_scores,
+                feedback=self.feedback,
+            )
+        else:
+            write_buffer_values_to_grid(
+                gpkg_path=self.gpkg_path,
+                column_name=self.layer_id,
+                buffer_layer=scored_buffers,
+                value_field="value",
+                aggregation_method="MAX",
+                feedback=self.feedback,
+            )
 
         self.progressChanged.emit(80.0)
 
@@ -462,17 +472,12 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
             )
             return False
 
-        # Add value field with score 5 (highest accessibility)
+        # Add value field (placeholder — actual scoring happens in
+        # write_percentage_scores_to_grid via percentage intersection)
         field_names = [field.name() for field in buffered_layer.fields()]
         if "value" not in field_names:
             buffered_layer.dataProvider().addAttributes([QgsField("value", QVariant.Int)])
             buffered_layer.updateFields()
-
-        buffered_layer.startEditing()
-        for feature in buffered_layer.getFeatures():
-            feature.setAttribute("value", 5)
-            buffered_layer.updateFeature(feature)
-        buffered_layer.commitChanges()
 
         return buffered_layer
 
@@ -781,6 +786,29 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
         if "value" not in field_names:
             grid_layer.dataProvider().addAttributes([QgsField("value", QVariant.Int)])
             grid_layer.updateFields()
+
+        buffer_geoms = []
+        for buffered_feature in buffered_layer.getFeatures():
+            geom = buffered_feature.geometry()
+            if geom.isNull() or geom.isEmpty():
+                continue
+            if not geom.isGeosValid():
+                geom = geom.makeValid()
+                if geom.isEmpty():
+                    continue
+            buffer_geoms.append(geom)
+
+        dissolved = QgsGeometry.unaryUnion(buffer_geoms) if buffer_geoms else QgsGeometry()
+        if dissolved.isNull() or dissolved.isEmpty():
+            log_message("No valid buffer geometries to dissolve", level=Qgis.Warning)
+            return grid_layer
+        if not dissolved.isGeosValid():
+            dissolved = dissolved.makeValid()
+
+        log_message(f"Dissolved {len(buffer_geoms)} buffers for percentage scoring")
+
+        sorted_thresholds = sorted(self.percentage_scores.items())
+
         grid_layer.startEditing()
         for grid_feature in grid_layer.getFeatures():
             grid_geom = grid_feature.geometry()
@@ -789,64 +817,21 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
             grid_area = grid_geom.area()
             if grid_area == 0:
                 continue
-            max_score = 0
-            max_overlap_percent = 0
-            for buffered_feature in buffered_layer.getFeatures():
-                buffered_geom = buffered_feature.geometry()
-                if buffered_geom.isNull():
-                    continue
-                intersection = grid_geom.intersection(buffered_geom)
-                if intersection.isNull() or intersection.area() == 0:
-                    continue
-                # Calculate % of buffer within hexagon (not % of hexagon covered)
-                buffer_area = buffered_geom.area()
-                if buffer_area > 0:
-                    overlap_percent = (intersection.area() / buffer_area) * 100
+
+            intersection = grid_geom.intersection(dissolved)
+            if intersection.isNull() or intersection.area() == 0:
+                grid_feature.setAttribute("value", 0)
+                grid_layer.updateFeature(grid_feature)
+                continue
+
+            overlap_percent = (intersection.area() / grid_area) * 100
+            score = 0
+            for min_pct, s in sorted_thresholds:
+                if overlap_percent > min_pct:
+                    score = s
                 else:
-                    overlap_percent = 0
-                if overlap_percent > max_overlap_percent:
-                    max_overlap_percent = overlap_percent
-            # Calculate score based on final max_overlap_percent after all buffers checked
-            # Table ranges: Score 0: 0%, Score 1: 0.01-6%, Score 2: 6.01-12%, etc.
-            sorted_items = sorted(self.percentage_scores.items())
-            log_message(
-                f"DEBUG: Feature {grid_feature.id()} - max_overlap: {max_overlap_percent:.4f}%, thresholds: {sorted_items}",
-                level=Qgis.Info,
-            )
-            max_score = 0
-            for i, (min_pct, score) in enumerate(sorted_items):
-                if score == 0:
-                    if max_overlap_percent == 0:
-                        max_score = 0
-                        log_message(
-                            f"DEBUG: Feature {grid_feature.id()} - Score 0 (overlap=0%)",
-                            level=Qgis.Info,
-                        )
-                elif i == len(sorted_items) - 1:
-                    # Last score: prev_pct < overlap (e.g., 24 < x <= 100, but use >= for float precision)
-                    prev_pct = sorted_items[i - 1][0]
-                    in_range = prev_pct < max_overlap_percent
-                    log_message(
-                        f"DEBUG: Feature {grid_feature.id()} - Checking Score {score}: {prev_pct} < {max_overlap_percent:.4f} = {in_range}",
-                        level=Qgis.Info,
-                    )
-                    if in_range:
-                        max_score = score
-                else:
-                    # Middle scores: prev_pct < overlap <= min_pct
-                    prev_pct = sorted_items[i - 1][0]
-                    in_range = prev_pct < max_overlap_percent <= min_pct
-                    log_message(
-                        f"DEBUG: Feature {grid_feature.id()} - Checking Score {score}: {prev_pct} < {max_overlap_percent:.4f} <= {min_pct} = {in_range}",
-                        level=Qgis.Info,
-                    )
-                    if in_range:
-                        max_score = score
-            log_message(
-                f"DEBUG: Feature {grid_feature.id()} - FINAL: max_overlap={max_overlap_percent:.4f}%, assigned_score={max_score}",
-                level=Qgis.Info,
-            )
-            grid_feature.setAttribute("value", max_score)
+                    break
+            grid_feature.setAttribute("value", score)
             grid_layer.updateFeature(grid_feature)
         grid_layer.commitChanges()
         return grid_layer
@@ -977,49 +962,30 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
     def _assign_percentage_scores(self, layer: QgsVectorLayer) -> QgsVectorLayer:
         """Assign scores based on percentage intersection with buffer.
 
-        For Regional scale: calculates what percentage of each grid cell
-        is covered by the accessibility buffer and assigns score accordingly.
+        Note: This method is only reachable from the legacy raster-first path
+        via _assign_scores(). The grid-first path uses
+        write_percentage_scores_to_grid() directly. The legacy Regional path
+        uses _score_grid_for_percentage() instead.
+
+        This method operates on a single buffer layer and cannot compute
+        percentage intersection without a separate grid layer. It assigns
+        score 0 as a safe fallback; percentage scoring requires the
+        grid-first path or _score_grid_for_percentage().
 
         Args:
             layer: The buffered features layer.
 
         Returns:
-            The same layer with a "value" field containing the assigned scores.
+            The same layer with a "value" field set to 0.
         """
-        log_message("Using percentage-based scoring for Regional scale")
-        buffer_distance = 0
-        if hasattr(self, "buffer_distances") and self.buffer_distances:
-            buffer_distance = (
-                max(self.buffer_distances) if isinstance(self.buffer_distances, list) else self.buffer_distances
-            )
-        elif self.distances:
-            buffer_distance = max(self.distances) if isinstance(self.distances, list) else self.distances
-        log_message(f"Buffer distance for percentage scoring: {buffer_distance}m")
+        log_message(
+            "_assign_percentage_scores called on buffer layer without grid context — "
+            "assigning score 0. Use grid-first path for percentage-based scoring.",
+            level=Qgis.Warning,
+        )
         layer.startEditing()
         for feature in layer.getFeatures():
-            grid_geom = feature.geometry()
-            if grid_geom.isNull():
-                continue
-            grid_area = grid_geom.area()
-            buffer_geom = feature.geometry()
-            if buffer_geom.isNull():
-                continue
-            intersection = grid_geom.intersection(buffer_geom)
-            if intersection.isNull() or intersection.area() == 0:
-                feature.setAttribute("value", 0)
-            else:
-                overlap_percent = (intersection.area() / grid_area) * 100
-                score = 0
-                for min_pct, score_value in sorted(self.percentage_scores.items(), reverse=True):
-                    if overlap_percent >= min_pct:
-                        score = score_value
-                        break
-                feature.setAttribute("value", score)
-                log_message(
-                    f"Grid cell overlap: {overlap_percent:.2f}%, score: {score}",
-                    tag="GeoE3",
-                    level=Qgis.Info,
-                )
+            feature.setAttribute("value", 0)
             layer.updateFeature(feature)
         layer.commitChanges()
         return layer

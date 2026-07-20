@@ -1913,6 +1913,193 @@ def write_buffer_values_to_grid(
         return -1
 
 
+def write_percentage_scores_to_grid(
+    gpkg_path: str,
+    column_name: str,
+    buffer_layer: QgsVectorLayer,
+    percentage_scores: Dict[int, int],
+    feedback: QgsFeedback = None,
+) -> int:
+    """Score grid cells by % of hexagon area covered by dissolved POI buffers.
+
+    All buffer polygons are dissolved (unioned) first so that overlapping
+    buffers from nearby POIs are not double-counted.  Each hexagon's score is
+    then determined by what fraction of its own area falls inside the merged
+    buffer, mapped to a 0–5 class via *percentage_scores*.
+
+    Args:
+        gpkg_path: Path to the GeoPackage containing study_area_grid.
+        column_name: Name of the column to write values to.
+        buffer_layer: QgsVectorLayer containing buffer polygons (geometry only).
+        percentage_scores: Mapping of lower-bound percentage → score, e.g.
+            ``{0: 0, 6: 1, 12: 2, 18: 3, 24: 4, 100: 5}``.
+        feedback: Optional feedback for progress reporting.
+
+    Returns:
+        Number of cells updated, or -1 on error.
+    """
+    from qgis.core import (
+        QgsCoordinateTransform,
+        QgsGeometry,
+        QgsProject,
+    )
+
+    if not os.path.exists(gpkg_path):
+        log_message(f"GeoPackage not found: {gpkg_path}", level=Qgis.Warning)
+        return -1
+
+    if not buffer_layer or not buffer_layer.isValid():
+        log_message("Invalid buffer layer provided", level=Qgis.Warning)
+        return -1
+
+    if not percentage_scores:
+        log_message("No percentage_scores provided", level=Qgis.Warning)
+        return -1
+
+    sanitized_column = _sanitize_column_name(column_name)
+    _ensure_column_exists(gpkg_path, sanitized_column)
+
+    try:
+        grid_layer = QgsVectorLayer(f"{gpkg_path}|layername=study_area_grid", "grid", "ogr")
+        if not grid_layer.isValid():
+            log_message("Could not load study_area_grid layer", level=Qgis.Critical)
+            return -1
+
+        transform = None
+        if buffer_layer.crs() != grid_layer.crs():
+            log_message(
+                f"Buffer layer CRS {buffer_layer.crs().authid()} differs from grid CRS "
+                f"{grid_layer.crs().authid()} — reprojecting buffers on the fly",
+                level=Qgis.Warning,
+            )
+            transform = QgsCoordinateTransform(buffer_layer.crs(), grid_layer.crs(), QgsProject.instance())
+
+        buffer_geoms = []
+        repaired = 0
+        for buffer_feature in buffer_layer.getFeatures():
+            geometry = QgsGeometry(buffer_feature.geometry())
+            if geometry.isEmpty():
+                continue
+            if transform is not None:
+                geometry.transform(transform)
+            if not geometry.isGeosValid():
+                geometry = geometry.makeValid()
+                repaired += 1
+                if geometry.isEmpty():
+                    continue
+            buffer_geoms.append(geometry)
+        if repaired:
+            log_message(f"Repaired {repaired} invalid buffer geometries before dissolving")
+
+        if not buffer_geoms:
+            log_message("No valid buffer geometries to dissolve", level=Qgis.Warning)
+            return 0
+
+        dissolved = QgsGeometry.unaryUnion(buffer_geoms)
+        if dissolved.isNull() or dissolved.isEmpty():
+            log_message("Dissolved buffer is empty", level=Qgis.Warning)
+            return 0
+        if not dissolved.isGeosValid():
+            dissolved = dissolved.makeValid()
+
+        log_message(f"Dissolved {len(buffer_geoms)} buffers into unified polygon")
+
+        sorted_thresholds = sorted(percentage_scores.items())
+
+        def _score_for_percent(pct: float) -> int:
+            score = 0
+            for min_pct, s in sorted_thresholds:
+                if pct > min_pct:
+                    score = s
+                else:
+                    break
+            return score
+
+        grid_scores = {}
+        total_features = grid_layer.featureCount()
+        log_message(f"Scoring {total_features} grid cells by percentage intersection")
+        if total_features == 0:
+            log_message(
+                "study_area_grid contains no cells — nothing can be scored.",
+                level=Qgis.Critical,
+            )
+            return -1
+
+        for i, grid_feature in enumerate(grid_layer.getFeatures()):
+            grid_geom = grid_feature.geometry()
+            if grid_geom.isEmpty():
+                continue
+
+            grid_area = grid_geom.area()
+            if grid_area == 0:
+                continue
+
+            intersection = grid_geom.intersection(dissolved)
+            if intersection.isNull() or intersection.area() == 0:
+                continue
+
+            overlap_percent = (intersection.area() / grid_area) * 100
+            score = _score_for_percent(overlap_percent)
+            if score > 0:
+                grid_scores[grid_feature.id()] = score
+
+            if feedback and i % 1000 == 0:
+                feedback.setProgress((i / total_features) * 80)
+
+        log_message(f"Found {len(grid_scores)} grid cells with buffer coverage")
+
+        ds = _open_gpkg_for_write(gpkg_path)
+        if not ds:
+            log_message(f"Could not open GeoPackage: {gpkg_path}", level=Qgis.Critical)
+            return -1
+
+        updated_count = 0
+        batch_size = 500
+        fids = list(grid_scores.keys())
+
+        for batch_start in range(0, len(fids), batch_size):
+            batch_fids = fids[batch_start : batch_start + batch_size]
+
+            case_parts = []
+            for fid in batch_fids:
+                score = grid_scores[fid]
+                case_parts.append(f"WHEN fid = {fid} THEN {score}")
+
+            if case_parts:
+                fid_list = ",".join(str(f) for f in batch_fids)
+                sql = (
+                    f"UPDATE study_area_grid "  # nosec B608
+                    f'SET "{sanitized_column}" = CASE {" ".join(case_parts)} END '
+                    f"WHERE fid IN ({fid_list})"
+                )
+                _execute_sql_with_retry(ds, sql)
+                updated_count += len(batch_fids)
+
+            if feedback:
+                progress = 80 + (batch_start / max(len(fids), 1)) * 20
+                feedback.setProgress(progress)
+
+        ds = None
+        log_message(f"Updated {updated_count} grid cells with percentage-based scores")
+
+        ds = _open_gpkg_for_write(gpkg_path)
+        if ds:
+            sql = (
+                f"UPDATE study_area_grid "  # nosec B608
+                f'SET "{sanitized_column}" = 0 '
+                f'WHERE "{sanitized_column}" IS NULL'
+            )
+            _execute_sql_with_retry(ds, sql)
+            ds = None
+            log_message(f"Set score 0 for cells outside all buffers in column {sanitized_column}")
+
+        return updated_count
+
+    except Exception as e:
+        log_message(f"Error in write_percentage_scores_to_grid: {e}", level=Qgis.Critical)
+        return -1
+
+
 def get_grid_column_statistics(
     gpkg_path: str,
     column_name: str,

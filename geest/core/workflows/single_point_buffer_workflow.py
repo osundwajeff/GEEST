@@ -27,6 +27,7 @@ from geest.core.grid_column_utils import (
     clear_grid_column,
     rasterize_grid_column,
     write_buffer_values_to_grid,
+    write_percentage_scores_to_grid,
 )
 from geest.core.workflows.mappings import MAPPING_REGISTRY
 from geest.utilities import log_message
@@ -193,21 +194,28 @@ class SinglePointBufferWorkflow(WorkflowBase):
 
         self.progressChanged.emit(30.0)
 
-        # Step 2: Assign values to the buffered polygons
-        scored_layer = self._assign_scores(buffered_layer)
-
-        self.progressChanged.emit(40.0)
-
-        # Step 3: Write buffer scores to grid cells
-        log_message(f"Writing buffer scores to grid column {self.layer_id}")
-        write_buffer_values_to_grid(
-            gpkg_path=self.gpkg_path,
-            column_name=self.layer_id,
-            buffer_layer=scored_layer,
-            value_field="value",
-            aggregation_method="MAX",
-            feedback=self.feedback,
-        )
+        if self.scoring_method == "percentage_intersection" and self.percentage_scores:
+            self.progressChanged.emit(40.0)
+            log_message(f"Writing percentage-based scores to grid column {self.layer_id}")
+            write_percentage_scores_to_grid(
+                gpkg_path=self.gpkg_path,
+                column_name=self.layer_id,
+                buffer_layer=buffered_layer,
+                percentage_scores=self.percentage_scores,
+                feedback=self.feedback,
+            )
+        else:
+            scored_layer = self._assign_scores(buffered_layer)
+            self.progressChanged.emit(40.0)
+            log_message(f"Writing buffer scores to grid column {self.layer_id}")
+            write_buffer_values_to_grid(
+                gpkg_path=self.gpkg_path,
+                column_name=self.layer_id,
+                buffer_layer=scored_layer,
+                value_field="value",
+                aggregation_method="MAX",
+                feedback=self.feedback,
+            )
 
         self.progressChanged.emit(70.0)
 
@@ -343,6 +351,29 @@ class SinglePointBufferWorkflow(WorkflowBase):
         if "value" not in field_names:
             grid_layer.dataProvider().addAttributes([QgsField("value", QVariant.Int)])
             grid_layer.updateFields()
+
+        buffer_geoms = []
+        for buffered_feature in buffered_layer.getFeatures():
+            geom = buffered_feature.geometry()
+            if geom.isNull() or geom.isEmpty():
+                continue
+            if not geom.isGeosValid():
+                geom = geom.makeValid()
+                if geom.isEmpty():
+                    continue
+            buffer_geoms.append(geom)
+
+        dissolved = QgsGeometry.unaryUnion(buffer_geoms) if buffer_geoms else QgsGeometry()
+        if dissolved.isNull() or dissolved.isEmpty():
+            log_message("No valid buffer geometries to dissolve", level=Qgis.Warning)
+            return grid_layer
+        if not dissolved.isGeosValid():
+            dissolved = dissolved.makeValid()
+
+        log_message(f"Dissolved {len(buffer_geoms)} buffers for percentage scoring")
+
+        sorted_thresholds = sorted(self.percentage_scores.items())
+
         grid_layer.startEditing()
         for grid_feature in grid_layer.getFeatures():
             grid_geom = grid_feature.geometry()
@@ -351,40 +382,21 @@ class SinglePointBufferWorkflow(WorkflowBase):
             grid_area = grid_geom.area()
             if grid_area == 0:
                 continue
-            max_overlap_percent = 0
-            for buffered_feature in buffered_layer.getFeatures():
-                buffered_geom = buffered_feature.geometry()
-                if buffered_geom.isNull():
-                    continue
-                intersection = grid_geom.intersection(buffered_geom)
-                if intersection.isNull() or intersection.area() == 0:
-                    continue
-                # Calculate % of buffer within hexagon
-                buffer_area = buffered_geom.area()
-                if buffer_area > 0:
-                    overlap_percent = (intersection.area() / buffer_area) * 100
+
+            intersection = grid_geom.intersection(dissolved)
+            if intersection.isNull() or intersection.area() == 0:
+                grid_feature.setAttribute("value", 0)
+                grid_layer.updateFeature(grid_feature)
+                continue
+
+            overlap_percent = (intersection.area() / grid_area) * 100
+            score = 0
+            for min_pct, s in sorted_thresholds:
+                if overlap_percent > min_pct:
+                    score = s
                 else:
-                    overlap_percent = 0
-                if overlap_percent > max_overlap_percent:
-                    max_overlap_percent = overlap_percent
-            # Calculate score based on final max_overlap_percent after all buffers checked
-            sorted_items = sorted(self.percentage_scores.items())
-            max_score = 0
-            for i, (min_pct, score) in enumerate(sorted_items):
-                if score == 0:
-                    if max_overlap_percent == 0:
-                        max_score = 0
-                elif i == len(sorted_items) - 1:
-                    # Last score: prev_pct < overlap
-                    prev_pct = sorted_items[i - 1][0]
-                    if prev_pct < max_overlap_percent:
-                        max_score = score
-                else:
-                    # Middle scores: prev_pct < overlap <= min_pct
-                    prev_pct = sorted_items[i - 1][0]
-                    if prev_pct < max_overlap_percent <= min_pct:
-                        max_score = score
-            grid_feature.setAttribute("value", max_score)
+                    break
+            grid_feature.setAttribute("value", score)
             grid_layer.updateFeature(grid_feature)
         grid_layer.commitChanges()
         return grid_layer
