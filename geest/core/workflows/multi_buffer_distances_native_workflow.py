@@ -826,11 +826,12 @@ class MultiBufferDistancesNativeWorkflow(WorkflowBase):
 
             overlap_percent = (intersection.area() / grid_area) * 100
             score = 0
-            for min_pct, s in sorted_thresholds:
-                if overlap_percent > min_pct:
+            for max_pct, s in sorted_thresholds:
+                if overlap_percent <= max_pct:
                     score = s
-                else:
                     break
+            else:
+                score = sorted_thresholds[-1][1]
             grid_feature.setAttribute("value", score)
             grid_layer.updateFeature(grid_feature)
         grid_layer.commitChanges()

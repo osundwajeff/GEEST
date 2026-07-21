@@ -2007,13 +2007,10 @@ def write_percentage_scores_to_grid(
         sorted_thresholds = sorted(percentage_scores.items())
 
         def _score_for_percent(pct: float) -> int:
-            score = 0
-            for min_pct, s in sorted_thresholds:
-                if pct > min_pct:
-                    score = s
-                else:
-                    break
-            return score
+            for max_pct, s in sorted_thresholds:
+                if pct <= max_pct:
+                    return s
+            return sorted_thresholds[-1][1]
 
         grid_scores = {}
         total_features = grid_layer.featureCount()
