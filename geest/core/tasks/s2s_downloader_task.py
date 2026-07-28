@@ -331,8 +331,8 @@ class S2SDownloaderTask(QgsTask):
                         level=Qgis.Info,
                     )
                 verify_ds = None
-        except Exception:
-            pass
+        except Exception as e:
+            log_message(f"S2S GPKG schema verification skipped: {e}", level=Qgis.Warning)
         self._temp_output_path = ""
 
     def _append_rows_to_gpkg(self, rows: List[Dict[str, Any]]) -> None:
