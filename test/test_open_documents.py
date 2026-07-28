@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Opening documents/folders must never block the QGIS main thread.
 
-subprocess.run(["xdg-open", pdf]) on the main thread freezes the QGIS
+subprocess.run(['xdg-open', pdf]) on the main thread freezes the QGIS
 event loop until the viewer exits (the UI appears focus-locked behind the
 viewer), and force-closing the viewer can take the whole process group —
 QGIS included — down with it. Every open-with-system-handler call must go
