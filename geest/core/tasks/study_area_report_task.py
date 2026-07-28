@@ -5,13 +5,11 @@ This module contains the QgsTask for generating study area reports in the backgr
 """
 
 import os
-import platform
-import subprocess  # nosec B404
 
 from qgis.core import Qgis, QgsTask
 
 from geest.core.reports.study_area_report import StudyAreaReport
-from geest.utilities import log_message
+from geest.utilities import log_message, open_with_system_handler
 
 
 class StudyAreaReportTask(QgsTask):
@@ -62,17 +60,9 @@ class StudyAreaReportTask(QgsTask):
             result: True if task succeeded, False otherwise.
         """
         if result:
-            try:
-                if os.name == "nt":
-                    os.startfile(self.report_path)  # nosec B606
-                else:
-                    system = platform.system().lower()
-                    if system == "darwin":
-                        subprocess.run(["open", self.report_path], check=False)  # nosec B603 B607
-                    else:
-                        subprocess.run(["xdg-open", self.report_path], check=False)  # nosec B603 B607
-            except Exception as e:
-                log_message(f"Could not open PDF viewer: {e}", tag="GeoE3", level=Qgis.Warning)
+            # Open the PDF using the system PDF viewer (detached — this
+            # runs on the main thread and must not block the event loop).
+            open_with_system_handler(self.report_path)
         else:
             log_message("Study area report generation failed.", tag="GeoE3", level=Qgis.Critical)
 

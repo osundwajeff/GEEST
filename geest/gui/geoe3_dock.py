@@ -469,21 +469,34 @@ class GeoE3Dock(QDockWidget):
             log_message("Switched to Help panel")
 
     def _open_road_network_from_ors(self) -> None:
-        """Open the road network panel from ORS with a valid working directory."""
+        """Open the road network panel from ORS with a valid working directory.
+
+        This runs as a signal slot: an exception escaping it is fatal on
+        PyQt6 (qFatal → abort), so validation failures must end in a
+        message bar warning, never a raise.
+        """
         working_directory = self.create_project_widget.working_dir or self.tree_widget.working_directory
-        if not working_directory:
+        if not working_directory or not os.path.isdir(working_directory):
             self.message_bar.pushWarning(
                 "Missing working directory",
-                "Open or create a project before setting network layers.",
+                (
+                    "Open or create a project before setting network layers."
+                    if not working_directory
+                    else f"The project folder no longer exists: {working_directory}"
+                ),
             )
             return
-        self.stacked_widget.setCurrentIndex(ROAD_NETWORK_PANEL)
-        self.road_network_widget.set_working_directory(working_directory)
-        if self.create_project_widget.working_dir:
-            self.road_network_widget.set_reference_layer(self.create_project_widget.reference_layer())
-            self.road_network_widget.set_crs(
-                self.create_project_widget.crs(working_directory=self.create_project_widget.working_dir)
-            )
+        try:
+            self.stacked_widget.setCurrentIndex(ROAD_NETWORK_PANEL)
+            self.road_network_widget.set_working_directory(working_directory)
+            if self.create_project_widget.working_dir:
+                self.road_network_widget.set_reference_layer(self.create_project_widget.reference_layer())
+                self.road_network_widget.set_crs(
+                    self.create_project_widget.crs(working_directory=self.create_project_widget.working_dir)
+                )
+        except Exception as e:
+            log_message(f"Failed to open the road network panel: {e}", tag="GeoE3", level=Qgis.Critical)
+            self.message_bar.pushWarning("Road network panel", f"Could not open the road network panel: {e}")
 
     def _open_next_panel_after_project_creation(self) -> None:
         """Open the next panel after project creation based on analysis scale."""
