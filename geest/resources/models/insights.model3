@@ -221,9 +221,9 @@
     </Option>
   </Option>
   <Option type="Map" name="designerParameterValues">
-    <Option value="lca_ppp_2020_UNadj_constrained_ec945779_3222_4975_9f04_3312e7855d64" type="QString" name="population_counts"/>
-    <Option value="administrative_boundary_7f19d49d_e23e_4737_9d7e_8fc99db4ef72" type="QString" name="subnational_boundaries"/>
-    <Option value="Score_by_Population_and_Job_Distribution_d80c2405_c0e8_4a8d_823b_9830ff92c34b" type="QString" name="wee"/>
+    <Option value="lca_ppp_2020_UNadj_constrained" type="QString" name="population_counts"/>
+    <Option value="administrative_boundary" type="QString" name="subnational_boundaries"/>
+    <Option value="Score_by_Population_and_Job_Distribution" type="QString" name="wee"/>
   </Option>
   <Option name="groupBoxes"/>
   <Option name="help"/>
