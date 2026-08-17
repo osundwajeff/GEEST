@@ -116,10 +116,7 @@ class RasterReclassificationWorkflow(WorkflowBase):
 
     def _configure_reclassification_rules(self) -> None:
         """Configure hazard-specific reclassification table and boundary mode."""
-        if self.layer_id == "landslide":
-            self.range_boundaries = 2  # min and max values are included
-        else:
-            self.range_boundaries = 0  # default value for range boundaries
+        self.range_boundaries = 0  # default value for range boundaries
 
         if self.layer_id == "fire":
             self.reclassification_rules = [
@@ -165,23 +162,23 @@ class RasterReclassificationWorkflow(WorkflowBase):
             ]
         elif self.layer_id == "landslide":
             self.reclassification_rules = [
-                0,
+                "-inf",
                 0,
                 5.00,
-                1,
+                0,
                 1,
                 4.00,
-                2,
+                1,
                 2,
                 3.00,
-                3,
+                2,
                 3,
                 2.00,
-                4,
+                3,
                 4,
                 1.00,
-                5,
-                5,
+                4,
+                "inf",
                 0,
             ]
         elif self.layer_id == "cyclone":
