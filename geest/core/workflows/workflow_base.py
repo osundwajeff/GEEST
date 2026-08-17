@@ -1252,6 +1252,10 @@ class WorkflowBase(QObject):
                     continue
                 if file.endswith(".tif") and file in referenced_tifs:
                     continue
+                # Keep per-area aggregated rasters: they are consumed by the
+                # downstream insights (opportunities mask, by-population score).
+                if file.endswith(".tif") and file.startswith(f"{self.layer_id}_aggregated_"):
+                    continue
                 # Skip subdirectories — they contain child workflow outputs
                 if os.path.isdir(file_path):
                     continue

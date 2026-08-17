@@ -116,9 +116,14 @@ class OpportunitiesMaskProcessor(QgsTask):
         self.item = item
         self.features_layer = None
         self.raster_layer = None
-        self.mask_mode = self.item.attribute("mask_mode", None)  # if set,  will be "point", "polygon" or "raster"
-        if not self.mask_mode:
-            raise Exception("Mask mode not set in the analysis.")
+        self.mask_mode = self.item.attribute(
+            "mask_mode", None
+        )  # if set,  will be "point", "polygon", "raster" or "ghsl"
+        if not self.mask_mode or self.mask_mode in ("None", "none"):
+            raise Exception(
+                "No mask source selected. Configure a mask source in the analysis weightings dialog "
+                "or skip the opportunities mask."
+            )
 
         self.workflow_name = f"opportunities_{self.mask_mode}_mask"
         # In normal workflows this comes from the item, but this workflow is a bit different
@@ -175,58 +180,69 @@ class OpportunitiesMaskProcessor(QgsTask):
         elif self.mask_mode == "ghsl":
             # Use the global human settlements layer defined in the project settings
             log_message("Loading global human settlements layer for mask")
-            layer_source = os.path.join(working_directory, "study_area", "ghsl_settlements_layer.parquet")
-            provider_type = "ogr"
-
-            # Check if file exists and is not empty (0 bytes)
-            needs_download = False
-            if not os.path.exists(layer_source):
-                log_message(f"GHSL parquet file not found: {layer_source}", level=Qgis.Warning)
-                needs_download = True
-            elif os.path.getsize(layer_source) == 0:
-                log_message(f"GHSL parquet file is 0 bytes: {layer_source}", level=Qgis.Warning)
-                needs_download = True
-
-            if needs_download:
-                log_message("Attempting to download and process GHSL data...")
-                if not self._download_ghsl_data(working_directory):
+            # Prefer the settlements layer already stored in the study area
+            # GeoPackage during project setup - it is already clipped to the
+            # study area and reprojected to the target CRS.
+            features_layer = None
+            try:
+                gpkg_layer_source = f"{self.study_area_gpkg_path}|layername=ghsl_settlements"
+                gpkg_layer = QgsVectorLayer(gpkg_layer_source, "ghsl_settlements", "ogr")
+                if gpkg_layer.isValid() and gpkg_layer.featureCount() > 0:
                     log_message(
-                        "Failed to download GHSL data for mask",
+                        f"Using ghsl_settlements layer from study area GeoPackage "
+                        f"({gpkg_layer.featureCount()} features)"
+                    )
+                    features_layer = gpkg_layer
+            except Exception:  # nosec B110
+                pass  # Fall through to the parquet download path below
+
+            if features_layer is None:
+                layer_source = os.path.join(working_directory, "study_area", "ghsl_settlements_layer.parquet")
+                provider_type = "ogr"
+
+                # Check if file exists and is not empty (0 bytes)
+                needs_download = False
+                if not os.path.exists(layer_source):
+                    log_message(f"GHSL parquet file not found: {layer_source}", level=Qgis.Warning)
+                    needs_download = True
+                elif os.path.getsize(layer_source) == 0:
+                    log_message(f"GHSL parquet file is 0 bytes: {layer_source}", level=Qgis.Warning)
+                    needs_download = True
+
+                if needs_download:
+                    log_message("Attempting to download and process GHSL data...")
+                    if not self._download_ghsl_data(working_directory):
+                        log_message(
+                            "Failed to download GHSL data for mask",
+                            tag="GeoE3",
+                            level=Qgis.Critical,
+                        )
+                        raise Exception("Failed to download GHSL data for mask")
+
+                # Try loading the layer again after potential download
+                if not os.path.exists(layer_source):
+                    log_message(
+                        f"{self.mask_mode} parquet file not found after download attempt",
                         tag="GeoE3",
                         level=Qgis.Critical,
                     )
-                    raise Exception("Failed to download GHSL data for mask")
+                    raise Exception(f"{self.mask_mode} parquet file not found")
 
-            # Try loading the layer again after potential download
-            if not os.path.exists(layer_source):
-                log_message(
-                    f"{self.mask_mode} parquet file not found after download attempt",
-                    tag="GeoE3",
-                    level=Qgis.Critical,
-                )
-                raise Exception(f"{self.mask_mode} parquet file not found")
+                if os.path.getsize(layer_source) == 0:
+                    log_message(
+                        f"{self.mask_mode} parquet file is 0 bytes after download attempt",
+                        tag="GeoE3",
+                        level=Qgis.Critical,
+                    )
+                    raise Exception(f"{self.mask_mode} parquet file is 0 bytes")
 
-            if os.path.getsize(layer_source) == 0:
-                log_message(
-                    f"{self.mask_mode} parquet file is 0 bytes after download attempt",
-                    tag="GeoE3",
-                    level=Qgis.Critical,
-                )
-                raise Exception(f"{self.mask_mode} parquet file is 0 bytes")
+                features_layer = QgsVectorLayer(layer_source, self.mask_mode, provider_type)
+                if not features_layer.isValid():
+                    log_message(f"{self.mask_mode} parquet file not valid", level=Qgis.Critical)
+                    log_message(f"Layer Source: {layer_source}", level=Qgis.Critical)
+                    raise Exception(f"{self.mask_mode} parquet file not valid")
 
-            self.features_layer = QgsVectorLayer(layer_source, self.mask_mode, provider_type)
-            if not self.features_layer.isValid():
-                log_message(f"{self.mask_mode} parquet file not valid", level=Qgis.Critical)
-                log_message(f"Layer Source: {layer_source}", level=Qgis.Critical)
-                raise Exception(f"{self.mask_mode} parquet file not valid")
-            # Check the crs of the layer, if it is not in the target crs, reproject it
-            if self.features_layer.crs() != self.target_crs:
-                log_message("Reprojecting features layer to match target crs")
-                # Note that the layer returned will be a memory layer
-                # which may be inefficiecy here.
-                log_message(f"Layer CRS: {self.features_layer.crs().authid()}")
-                log_message(f"Target CRS: {self.target_crs.authid()}")
-                self.features_layer = check_and_reproject_layer(self.features_layer, self.target_crs)
+            self.features_layer = check_and_reproject_layer(features_layer, self.target_crs)
 
         # Workflow directory is the subdir under working_directory
         self.workflow_directory = os.path.join(working_directory, "opportunity_masks")
@@ -532,7 +548,7 @@ class OpportunitiesMaskProcessor(QgsTask):
             str: Path to the mask raster layer generated from the input clipped polygon layer.
         """
 
-        rasterized_polygons_path = os.path.join(self.workflow_directory, f"opportunites_mask_{index}.tif")
+        rasterized_polygons_path = os.path.join(self.workflow_directory, f"opportunities_mask_{index}.tif")
 
         params = {
             "INPUT": clipped_layer,

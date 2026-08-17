@@ -180,14 +180,20 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
 
         # Restore the radio button state
         mask_mode = self.tree_item.attribute("mask_mode", "")
-        if mask_mode == "point":
+        if mask_mode in ("", "None", "none"):
+            self.none_radio_button.setChecked(True)
+        elif mask_mode == "point":
             self.point_radio_button.setChecked(True)
         elif mask_mode == "polygon":
             self.polygon_radio_button.setChecked(True)
         elif mask_mode == "raster":
             self.raster_radio_button.setChecked(True)
-        else:  # ghsl - use the global human settlements layer configured during project setup
+        elif mask_mode == "ghsl":
+            # use the global human settlements layer configured during project setup
             self.ghsl_radio_button.setChecked(True)
+        else:
+            # Unknown value - default to no mask rather than silently choosing GHSL
+            self.none_radio_button.setChecked(True)
 
         buffer_distance = self.tree_item.attribute("buffer_distance_m", 0)
         self.buffer_distance_m.setValue(int(buffer_distance))
@@ -597,7 +603,9 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         self.save_combo_to_model(self.polygon_combo, self.polygon_lineedit, "polygon_mask")
         self.save_combo_to_model(self.raster_combo, self.raster_lineedit, "raster_mask")
         # Save the radio button state
-        if self.point_radio_button.isChecked():
+        if self.none_radio_button.isChecked():
+            self.tree_item.setAttribute("mask_mode", "None")
+        elif self.point_radio_button.isChecked():
             self.tree_item.setAttribute("mask_mode", "point")
         elif self.polygon_radio_button.isChecked():
             self.tree_item.setAttribute("mask_mode", "polygon")
