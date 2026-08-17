@@ -391,9 +391,14 @@ class JsonTreeModel(QAbstractItemModel):
 
         # Existing data handling code
         if role == Qt.ItemDataRole.DisplayRole:
-            return item.data(index.column())
-
-        if role == Qt.ItemDataRole.DisplayRole:
+            if index.column() == 0:
+                # Single-child factors are hidden, promoting their indicator to
+                # appear directly under the dimension; show the factor name
+                # in place of the indicator's long descriptive title.
+                if item.role == "indicator":
+                    parent = item.parent()
+                    if parent and parent.role == "factor" and not parent.is_visible():
+                        return parent.name()
             return item.data(index.column())
         elif role == Qt.ItemDataRole.ForegroundRole:
             # If item is disabled, show it greyed out

@@ -292,7 +292,7 @@ padding: 4px;</string>
            </font>
           </property>
           <property name="text">
-           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Optional: &lt;/span&gt;You can perform a targeted analysis of Women’s Enablement Environments with respect to the location of jobs. Input the location of existing or potential jobs either as a point file, in polygon format or raster format explore how the results relate to existing or planned job opportunities.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Optional: &lt;/span&gt;you can perform a targeted analysis of the Enablement Environments for Employment with respect to the location of jobs. Input the location of existing or potential jobs either as a point file, in polygon format or raster format explore how the results relate to existing or planned job opportunities.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
           </property>
           <property name="wordWrap">
            <bool>true</bool>
@@ -320,7 +320,7 @@ padding: 4px;</string>
         <item row="0" column="0">
          <widget class="QLabel" name="geoe3_x_population_description">
           <property name="text">
-           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:8pt; font-weight:600;&quot;&gt;Optional:&lt;/span&gt;&lt;span style=&quot; font-size:8pt;&quot;&gt; You can visualize GeoE3 Score with respect to female population distribution by age group. Please provide a raster dataset below containing (female) population density and it will be combined with the GeoE3 Score to calculate the GeoE3 by Population Score. If you have set an aggregation layer above, this will be aggregated per subnational boundary to show the majory GeoE3 by Population Score per polygon.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:8pt; font-weight:600;&quot;&gt;Optional:&lt;/span&gt;&lt;span style=&quot; font-size:8pt;&quot;&gt; You can visualize the GeoE3 Score with respect to population distribution. Please provide a raster dataset below containing population density of the demographic of interest (female, teens, male, etc) and it will be combined with the GeoE3 Score to calculate the GeoE3 by Population Score. If you have set an aggregation layer above, this will be aggregated per subnational boundary to show the majority GeoE3 by Population Score per polygon.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
           </property>
           <property name="wordWrap">
            <bool>true</bool>
