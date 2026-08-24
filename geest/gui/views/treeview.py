@@ -12,6 +12,7 @@ from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QTreeView
 
 from geest.core import JsonTreeItem
+from geest.core.constants import DEFAULT_S2S_POPULATION_FIELD
 from geest.utilities import log_message
 
 
@@ -103,6 +104,9 @@ class JsonTreeModel(QAbstractItemModel):
             "geoe3_by_population_by_opportunities_mask_result", ""
         )
         qgis_project_path = json_data.get("qgis_project_path", "")
+        population_s2s_output_path = json_data.get("population_s2s_output_path") or ""
+        population_s2s_field = json_data.get("population_s2s_field") or DEFAULT_S2S_POPULATION_FIELD
+        population_source = json_data.get("population_source", "raster")
         # Store special properties in the attributes dictionary
         analysis_attributes = {
             "analysis_name": analysis_name,
@@ -132,6 +136,9 @@ class JsonTreeModel(QAbstractItemModel):
             "geoe3_by_population_by_opportunities_mask_result_file": geoe3_by_population_by_opportunities_mask_result_file,
             "geoe3_by_population_by_opportunities_mask_result": geoe3_by_population_by_opportunities_mask_result,
             "qgis_project_path": qgis_project_path,
+            "population_s2s_output_path": population_s2s_output_path,
+            "population_s2s_field": population_s2s_field,
+            "population_source": population_source,
         }
 
         for prefix in [
