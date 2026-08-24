@@ -455,7 +455,7 @@ class AnalysisReport(BaseReport):
         product_keys = [
             ("result_file", "GeoE3 score"),
             ("geoe3_score_ghsl_masked_result_file", "GHSL masked"),
-            ("geoe3_by_population_result_file", "By population"),
+            ("geoe3_by_population", "By population"),
             ("geoe3_score_by_population_ghsl_masked_result_file", "By population (GHSL)"),
             ("opportunities_mask_result_file", "Opportunities mask"),
             ("geoe3_by_opportunities_mask_result_file", "Score × opportunities"),

@@ -162,7 +162,7 @@ class OpportunitiesByWeeScoreProcessingTask(QgsTask):
             if self.isCanceled():
                 return
 
-            mask_path = os.path.join(self.opportunity_masks_folder, f"opportunites_mask_{index}.tif")
+            mask_path = os.path.join(self.opportunity_masks_folder, f"opportunities_mask_{index}.tif")
             geoe3_score_path = os.path.join(self.geoe3_folder, f"geoe3_aggregated_{index}.tif")
             mask_layer = QgsRasterLayer(mask_path, "GeoE3")
             geoe3_score_layer = QgsRasterLayer(geoe3_score_path, "POP")

@@ -249,23 +249,30 @@ padding: 4px;</string>
          <property name="title">
           <string>Mask Source</string>
          </property>
-         <layout class="QGridLayout" name="gridLayout_3">
-          <item row="0" column="0">
-           <widget class="QRadioButton" name="point_radio_button">
-            <property name="text">
-             <string>Buffer Point Layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QRadioButton" name="polygon_radio_button">
-            <property name="text">
-             <string>Polygon Layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <layout class="QHBoxLayout" name="point_layout">
+          <layout class="QGridLayout" name="gridLayout_3">
+           <item row="0" column="0">
+            <widget class="QRadioButton" name="none_radio_button">
+             <property name="text">
+              <string>No mask</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QRadioButton" name="point_radio_button">
+             <property name="text">
+              <string>Buffer Point Layer</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QRadioButton" name="polygon_radio_button">
+             <property name="text">
+              <string>Polygon Layer</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <layout class="QHBoxLayout" name="point_layout">
             <item>
              <widget class="QgsMapLayerComboBox" name="point_combo"/>
             </item>
@@ -312,15 +319,15 @@ padding: 4px;</string>
             </item>
            </layout>
           </item>
-          <item row="4" column="0">
-           <widget class="QRadioButton" name="raster_radio_button">
-            <property name="text">
-             <string>Raster Layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <layout class="QHBoxLayout" name="raster_layout">
+           <item row="5" column="0">
+            <widget class="QRadioButton" name="raster_radio_button">
+             <property name="text">
+              <string>Raster Layer</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="0">
+            <layout class="QHBoxLayout" name="raster_layout">
             <item>
              <widget class="QgsMapLayerComboBox" name="raster_combo"/>
             </item>
@@ -352,8 +359,8 @@ padding: 4px;</string>
             </item>
            </layout>
           </item>
-          <item row="3" column="0">
-           <layout class="QHBoxLayout" name="polygon_layout">
+           <item row="4" column="0">
+            <layout class="QHBoxLayout" name="polygon_layout">
             <item>
              <widget class="QgsMapLayerComboBox" name="polygon_combo"/>
             </item>
@@ -385,13 +392,13 @@ padding: 4px;</string>
             </item>
            </layout>
           </item>
-          <item row="6" column="0">
-           <widget class="QRadioButton" name="ghsl_radio_button">
-            <property name="text">
-             <string>Use Global Human Settlements Layer</string>
-            </property>
-           </widget>
-          </item>
+           <item row="7" column="0">
+            <widget class="QRadioButton" name="ghsl_radio_button">
+             <property name="text">
+              <string>Use Global Human Settlements Layer</string>
+             </property>
+            </widget>
+           </item>
          </layout>
         </widget>
        </item>

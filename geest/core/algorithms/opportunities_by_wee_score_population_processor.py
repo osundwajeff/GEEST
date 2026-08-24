@@ -20,6 +20,7 @@ from qgis.core import (
 from geest.core import JsonTreeItem
 from geest.core.algorithms import AreaIterator
 from geest.core.constants import GDAL_OUTPUT_DATA_TYPE
+from geest.core.grid_column_utils import clear_grid_column
 from geest.utilities import log_message, resources_path
 
 
@@ -183,7 +184,7 @@ class OpportunitiesByWeeScorePopulationProcessingTask(QgsTask):
             if self.isCanceled():
                 return
 
-            mask_path = os.path.join(self.opportunity_masks_folder, f"opportunites_mask_{index}.tif")
+            mask_path = os.path.join(self.opportunity_masks_folder, f"opportunities_mask_{index}.tif")
             geoe3_score_by_population_path = os.path.join(self.geoe3_folder, f"geoe3_by_population_score_{index}.tif")
             mask_layer = QgsRasterLayer(mask_path, "GeoE3")
             geoe3_score_by_population_layer = QgsRasterLayer(geoe3_score_by_population_path, "POP")
@@ -216,6 +217,32 @@ class OpportunitiesByWeeScorePopulationProcessingTask(QgsTask):
             self.output_rasters.append(output_path)
 
             log_message(f"Masked GeoE3 Score raster saved to {output_path}")
+
+        # Write masked values to grid — copy geoe3_by_population values only
+        # where the opportunities mask (settlements) is present, leaving cells
+        # outside settlements as NULL.
+        self._write_masked_to_grid()
+
+    def _write_masked_to_grid(self) -> None:
+        """Copy geoe3_by_population values to geoe3_by_population_masked for cells covered by the mask."""
+        from osgeo import ogr
+
+        clear_grid_column(self.study_area_gpkg_path, "geoe3_by_population_masked")
+        ds = ogr.Open(self.study_area_gpkg_path, 1)
+        if not ds:
+            log_message("Could not open GeoPackage to write geoe3_by_population_masked")
+            return
+        sql = (
+            'UPDATE study_area_grid SET "geoe3_by_population_masked" = "geoe3_by_population" '  # nosec B608
+            'WHERE "opportunities_mask" IS NOT NULL'
+        )
+        ds.ExecuteSQL(sql)
+        # Serialised process-wide via gpkg_doctor's checkpoint lock.
+        from geest.core.gpkg_doctor import checkpoint_dataset
+
+        checkpoint_dataset(ds)
+        ds = None
+        log_message("Updated geoe3_by_population_masked grid column where opportunities_mask is set")
 
     def generate_vrt(self) -> str:
         """

@@ -2297,7 +2297,19 @@ class TreePanel(QWidget):
         self.overall_progress_bar.setMaximum(self.items_to_run - 1)
         self.workflow_progress_bar.setValue(0)
         self.save_json_to_working_directory()
+
+        # For the analysis item run the post-processing insights first, so
+        # masked products exist before we decide which layer to add to the map.
+        if item.role == "analysis":
+            self.calculate_analysis_insights(item)
+
         # Add layer to map after workflow completes using auto-determined strategy
+        if item.role == "analysis":
+            mask_mode = item.attribute("mask_mode", "None")
+            masked_vrt = item.attribute("geoe3_score_ghsl_masked_result_file", "")
+            use_masked = mask_mode not in ("", "None", "none") and bool(masked_vrt)
+        else:
+            use_masked = False
         if item.role == "dimension":
             column_name = f"dim_{item.attribute('id').lower().replace(' ', '_').replace('-', '_')}"
         elif item.role == "factor":
@@ -2305,11 +2317,18 @@ class TreePanel(QWidget):
         elif item.role == "indicator":
             column_name = item.attribute("id").lower().replace(" ", "_").replace("-", "_")
         elif item.role == "analysis":
-            column_name = "geoe3"  # Analysis aggregation uses geoe3 column
+            column_name = "geoe3_masked" if use_masked else "geoe3"  # Analysis aggregation uses geoe3 column
         else:
             column_name = None
 
-        if column_name is None or self._get_render_strategy() == "raster":
+        if item.role == "analysis" and use_masked and self._get_render_strategy() == "raster":
+            add_to_map(
+                item,
+                key="geoe3_score_ghsl_masked_result_file",
+                layer_name="GeoE3 Score",
+                group="GeoE3",
+            )
+        elif column_name is None or self._get_render_strategy() == "raster":
             add_to_map(item)
         else:
             add_grid_layer_to_map(item, column_name, self.working_directory)
@@ -2341,10 +2360,6 @@ class TreePanel(QWidget):
 
         # Emit dataChanged to refresh the decoration
         self.model.dataChanged.emit(second_column_index, second_column_index)
-
-        if item.role == "analysis":
-            # Run some post processing on the analysis results
-            self.calculate_analysis_insights(item)
 
     def calculate_analysis_insights(self, item: JsonTreeItem):
         """Calculate insights for the analysis.
@@ -2392,38 +2407,56 @@ class TreePanel(QWidget):
         item.setAttribute("geoe3_by_population", output)
 
         # Prepare the polygon mask data if provided
+        # The mask (job opportunities / GHSL) is optional - only run the
+        # mask pipeline when the user has selected a mask source in the
+        # analysis weightings dialog.
+        mask_mode = item.attribute("mask_mode", "None")
+        if mask_mode not in ("", "None", "none"):
+            try:
+                opportunities_mask_workflow = OpportunitiesMaskProcessor(
+                    item=item,
+                    study_area_gpkg_path=gpkg_path,
+                    cell_size_m=self.cell_size_m(),
+                    feedback=feedback,
+                    context=context,
+                    working_directory=self.working_directory,
+                )
+                opportunities_mask_workflow.run()
 
-        opportunities_mask_workflow = OpportunitiesMaskProcessor(
-            item=item,
-            study_area_gpkg_path=gpkg_path,
-            cell_size_m=self.cell_size_m(),
-            feedback=feedback,
-            context=context,
-            working_directory=self.working_directory,
-        )
-        opportunities_mask_workflow.run()
+                # Now apply the opportunities mask to the GeoE3 Score and GeoE3 Score x Population
+                # leaving us with 4 potential products:
+                # GeoE3 Score Unmasked (already created above)
+                # GeoE3 Score x Population Unmasked (already created above)
+                # GeoE3 Score Masked by Job Opportunities
+                # GeoE3 Score x Population masked by Job Opportunities
+                mask_processor = OpportunitiesByWeeScoreProcessingTask(
+                    item=item,
+                    study_area_gpkg_path=gpkg_path,
+                    working_directory=self.working_directory,
+                    force_clear=False,
+                )
+                mask_processor.run()
 
-        # Now apply the opportunities mask to the GeoE3 Score and GeoE3 Score x Population
-        # leaving us with 4 potential products:
-        # GeoE3 Score Unmasked (already created above)
-        # GeoE3 Score x Population Unmasked (already created above)
-        # GeoE3 Score Masked by Job Opportunities
-        # GeoE3 Score x Population masked by Job Opportunities
-        mask_processor = OpportunitiesByWeeScoreProcessingTask(
-            item=item,
-            study_area_gpkg_path=gpkg_path,
-            working_directory=self.working_directory,
-            force_clear=False,
-        )
-        mask_processor.run()
-
-        mask_processor = OpportunitiesByWeeScorePopulationProcessingTask(
-            item=item,
-            study_area_gpkg_path=gpkg_path,
-            working_directory=self.working_directory,
-            force_clear=False,
-        )
-        mask_processor.run()
+                mask_processor = OpportunitiesByWeeScorePopulationProcessingTask(
+                    item=item,
+                    study_area_gpkg_path=gpkg_path,
+                    working_directory=self.working_directory,
+                    force_clear=False,
+                )
+                mask_processor.run()
+            except Exception as e:
+                log_message(
+                    f"Failed to run opportunities mask pipeline: {e}",
+                    tag="GeoE3",
+                    level=Qgis.Critical,
+                )
+                log_message(traceback.format_exc(), level=Qgis.Critical)
+        else:
+            log_message(
+                f"No mask source selected (mask_mode={mask_mode!r}), skipping opportunities mask.",
+                tag="GeoE3",
+                level=Qgis.Info,
+            )
         # Now prepare the aggregation layers if an aggregation polygon layer is provided
         # leaving us with 2 potential products:
         # Subnational Aggregation fpr GeoE3 Score x Population Unmasked
