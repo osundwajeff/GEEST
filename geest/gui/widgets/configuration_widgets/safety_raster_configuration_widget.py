@@ -31,15 +31,15 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
     """
     A widget for configuring safety indicators based on a raster.
 
-    Allows the user to choose between Jenks Natural Breaks and Binary
-    classification for nighttime lights data.
+    Allows the user to choose between Jenks Natural Breaks and NOAA
+    threshold classification for nighttime lights data.
     """
 
     def add_internal_widgets(self) -> None:
         """
         Set up the layout for the UI components.
 
-        Adds a classification method selector (Jenks Natural Breaks vs Binary)
+        Adds a classification method selector (Jenks Natural Breaks vs NOAA)
         and an informational table of the scoring classes.
         """
         try:
@@ -50,24 +50,24 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
             self.method_group = QGroupBox("Classification Method:")
             method_layout = QHBoxLayout()
             self.jenks_radio = QRadioButton("Jenks Natural Breaks (6 classes)")
-            self.binary_radio = QRadioButton("Binary (dark / lit)")
+            self.noaa_radio = QRadioButton("NOAA thresholds (5 classes)")
 
             current_mode = self.attributes.get("ntl_classification_mode", "jenks")
-            if current_mode == "binary":
-                self.binary_radio.setChecked(True)
+            if current_mode == "noaa":
+                self.noaa_radio.setChecked(True)
             else:
                 self.jenks_radio.setChecked(True)
 
             method_layout.addWidget(self.jenks_radio)
-            method_layout.addWidget(self.binary_radio)
+            method_layout.addWidget(self.noaa_radio)
             self.method_group.setLayout(method_layout)
             self.internal_layout.addWidget(self.method_group)
 
             # Emit data_changed whenever the user changes the selection
             self.jenks_radio.toggled.connect(self.update_data)
-            self.binary_radio.toggled.connect(self.update_data)
+            self.noaa_radio.toggled.connect(self.update_data)
             self.jenks_radio.toggled.connect(self._on_method_changed)
-            self.binary_radio.toggled.connect(self._on_method_changed)
+            self.noaa_radio.toggled.connect(self._on_method_changed)
 
             # --- Informational class table ---
             self.mapping_table_label = QLabel()
@@ -84,15 +84,19 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
     def _build_table_html(self, mode: str) -> str:
         """Build the informational class mapping table for the selected mode."""
         data_source = NIGHTTIME_LIGHTS_SAFETY.get("data_source", "Nighttime Lights")
-        if mode == "binary":
+        if mode == "noaa":
             rows = [
-                "<tr><td>0</td><td>No Access</td><td>= 0</td><td>No light</td></tr>",
-                "<tr><td>5</td><td>Very High</td><td>> 0</td><td>Light detected</td></tr>",
+                "<tr><td>1</td><td>Very Low</td><td>0 - 0.5</td><td>No / very faint light</td></tr>",
+                "<tr><td>2</td><td>Low</td><td>0.5 - 1</td><td>Low illumination</td></tr>",
+                "<tr><td>3</td><td>Moderate</td><td>1 - 5</td><td>Moderate illumination</td></tr>",
+                "<tr><td>4</td><td>High</td><td>5 - 50</td><td>High illumination</td></tr>",
+                "<tr><td>5</td><td>Very High</td><td>&gt; 50</td><td>Intense illumination</td></tr>",
             ]
-            intro = "Binary mode produces 2 classes using an exact zero boundary."
-            example_note = "Example values shown are illustrative for binary light presence classification."
+            intro = "NOAA thresholds produce 5 classes (scores 1-5)."
+            example_note = "Fixed value ranges from the NASA Black Marble user guide."
             note = (
-                "Binary mode applies a strict zero boundary: values <= 0 map to class 0, and values > 0 map to class 5."
+                "NOAA mode applies fixed thresholds: values are classified as 1 (0-0.5), "
+                "2 (0.5-1), 3 (1-5), 4 (5-50), or 5 (>50)."
             )
         else:
             classes = NIGHTTIME_LIGHTS_SAFETY.get("classes", [])
@@ -129,7 +133,7 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
             if not hasattr(self, "mapping_table_label"):
                 return
 
-            mode = "binary" if self.binary_radio.isChecked() else "jenks"
+            mode = "noaa" if self.noaa_radio.isChecked() else "jenks"
             self.mapping_table_label.setText(self._build_table_html(mode))
         except Exception as e:
             log_message(
@@ -143,14 +147,14 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
         Return attributes updated with the current classification mode selection.
 
         Returns:
-            dict: Attributes dict with ntl_classification_mode set to 'jenks' or 'binary',
+            dict: Attributes dict with ntl_classification_mode set to 'jenks' or 'noaa',
                   or None if the widget radio button is not checked.
         """
         if not self.isChecked():
             return None
 
-        if self.binary_radio.isChecked():
-            self.attributes["ntl_classification_mode"] = "binary"
+        if self.noaa_radio.isChecked():
+            self.attributes["ntl_classification_mode"] = "noaa"
         else:
             self.attributes["ntl_classification_mode"] = "jenks"
 
@@ -183,8 +187,8 @@ class SafetyRasterConfigurationWidget(BaseConfigurationWidget):
         try:
             self.attributes = attributes
             mode = attributes.get("ntl_classification_mode", "jenks")
-            if mode == "binary":
-                self.binary_radio.setChecked(True)
+            if mode == "noaa":
+                self.noaa_radio.setChecked(True)
             else:
                 self.jenks_radio.setChecked(True)
             self._on_method_changed()

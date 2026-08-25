@@ -245,8 +245,8 @@ class SafetyRasterWorkflow(WorkflowBase):
         from geest.core.grid_column_utils import get_grid_column_values, reclassify_grid_column_with_table
 
         classification_mode = self.attributes.get("ntl_classification_mode", "jenks")
-        if classification_mode == "binary":
-            reclass_table = ["-inf", "0.0", "0", "0.0", "inf", "5"]
+        if classification_mode == "noaa":
+            reclass_table = self._build_noaa_table(max_val=0)
             return reclassify_grid_column_with_table(
                 gpkg_path=self.gpkg_path,
                 column_name=self.layer_id,
@@ -364,24 +364,43 @@ class SafetyRasterWorkflow(WorkflowBase):
             log_message("No valid data in the raster", tag="GeoE3", level=1)
             return None, None, None, None
 
-    def _build_binary_table(self, max_val: float) -> list:
+    def _build_noaa_table(self, max_val: float) -> list:
         """
-        Build binary classification table: non-positive vs positive.
+        Build the NOAA threshold classification table.
 
-        Uses exact zero as the boundary:
-        - values <= 0 map to class 0
-        - values > 0 map to class 5
+        Uses the fixed Black Marble (NOAA) thresholds:
+        - values in (0, 0.5]  map to class 1
+        - values in (0.5, 1]  map to class 2
+        - values in (1, 5]    map to class 3
+        - values in (5, 50]   map to class 4
+        - values > 50         map to class 5
 
-        The table is interpreted with RANGE_BOUNDARIES = 0
-        (min < value <= max).
+        The table is interpreted with RANGE_BOUNDARIES = 0 (min < value <= max).
 
         Args:
             max_val: Maximum value in the raster data
         Returns:
             Reclassification table as list of strings
-            Format: [min1, max1, class1, min2, max2, class2]
+            Format: [min1, max1, class1, min2, max2, class2, ...]
         """
-        reclass_table = ["-inf", "0.0", "0", "0.0", "inf", "5"]
+        _ = max_val
+        reclass_table = [
+            "-inf",
+            "0.5",
+            "1",
+            "0.5",
+            "1",
+            "2",
+            "1",
+            "5",
+            "3",
+            "5",
+            "50",
+            "4",
+            "50",
+            "inf",
+            "5",
+        ]
         return list(map(str, reclass_table))
 
     def _build_reclassification_table(self, max_val: float, median: float, valid_data: np.ndarray) -> list:
@@ -389,9 +408,9 @@ class SafetyRasterWorkflow(WorkflowBase):
         Build reclassification table using the method chosen by the user in the configuration widget.
 
         Reads ``ntl_classification_mode`` from the item attributes:
-        - ``"binary"``  → 2 classes (0=No Access, 5=Light Present)
-        - otherwise     → 6 dynamic equal-count classes (default; also used when the
-                          attribute is absent for backward compatibility with existing models)
+        - ``"noaa"``     → 5 fixed threshold classes (scores 1-5)
+        - otherwise      → 6 dynamic equal-count classes (default; also used when the
+                           attribute is absent for backward compatibility with existing models)
 
         Args:
             max_val: Maximum value in the raster
@@ -402,15 +421,15 @@ class SafetyRasterWorkflow(WorkflowBase):
             formatted as strings for QGIS native:reclassifybytable algorithm
         """
         classification_mode = self.attributes.get("ntl_classification_mode", "jenks")
-        use_binary = classification_mode == "binary"
+        use_noaa = classification_mode == "noaa"
 
-        if use_binary:
+        if use_noaa:
             log_message(
-                f"🎯 Binary classification selected by user (max={max_val:.6f})",
+                f"🎯 NOAA threshold classification selected by user (max={max_val:.6f})",
                 tag="GeoE3",
                 level=0,
             )
-            return self._build_binary_table(max_val)
+            return self._build_noaa_table(max_val)
 
         # Dynamic min-max classification. Breaks are derived from the data's
         # own min-max range so that every value maps to a class (no missing).

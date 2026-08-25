@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Unit tests for SafetyRasterWorkflow classification table logic.
 
-The table-building methods (_build_binary_table, _build_reclassification_table,
+The table-building methods (_build_noaa_table, _build_reclassification_table,
 _build_reclass_table_from_breaks) are pure numpy logic with no QGIS calls at
 runtime.  We test them by replicating the logic as standalone helper functions
 (identical to the workflow implementation) that can run without a QGIS
@@ -25,10 +25,26 @@ from geest.core.jenks import jenks_natural_breaks
 # ---------------------------------------------------------------------------
 
 
-def _build_binary_table(max_val: float) -> list:
-    """Mirrors SafetyRasterWorkflow._build_binary_table."""
+def _build_noaa_table(max_val: float) -> list:
+    """Mirrors SafetyRasterWorkflow._build_noaa_table."""
     _ = max_val
-    reclass_table = ["-inf", "0.0", "0", "0.0", "inf", "5"]
+    reclass_table = [
+        "-inf",
+        "0.5",
+        "1",
+        "0.5",
+        "1",
+        "2",
+        "1",
+        "5",
+        "3",
+        "5",
+        "50",
+        "4",
+        "50",
+        "inf",
+        "5",
+    ]
     return list(map(str, reclass_table))
 
 
@@ -43,8 +59,8 @@ def _build_reclass_table_from_breaks(breaks) -> list:
 def _build_reclassification_table(attributes: dict, max_val: float, median: float, valid_data) -> list:
     """Mirrors SafetyRasterWorkflow._build_reclassification_table."""
     classification_mode = attributes.get("ntl_classification_mode", "jenks")
-    if classification_mode == "binary":
-        return _build_binary_table(max_val)
+    if classification_mode == "noaa":
+        return _build_noaa_table(max_val)
     breaks = jenks_natural_breaks(valid_data, n_classes=6)
     return _build_reclass_table_from_breaks(breaks)
 
@@ -74,54 +90,68 @@ def _assign_classes(values, table) -> list:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildBinaryTable(unittest.TestCase):
-    """Tests for the binary table builder."""
+class TestBuildNoaaTable(unittest.TestCase):
+    """Tests for the NOAA threshold table builder."""
 
     def test_length(self):
-        """Binary table must have exactly 6 elements: [min, max, cls] × 2."""
-        self.assertEqual(len(_build_binary_table(100.0)), 6)
+        """NOAA table must have exactly 15 elements: [min, max, cls] × 5."""
+        self.assertEqual(len(_build_noaa_table(100.0)), 15)
 
     def test_class_scores(self):
-        """Dark pixels → class 0; lit pixels → class 5."""
-        t = _build_binary_table(50.0)
-        self.assertEqual(t[2], "0")
-        self.assertEqual(t[5], "5")
+        """Five classes with scores 1, 2, 3, 4, 5 in order."""
+        t = _build_noaa_table(50.0)
+        scores = [int(t[i]) for i in range(2, 15, 3)]
+        self.assertEqual(scores, [1, 2, 3, 4, 5])
 
-    def test_boundary_at_zero(self):
-        """Class boundary must be exactly at 0.0."""
-        t = _build_binary_table(99.0)
-        self.assertEqual(t[1], "0.0")
-        self.assertEqual(t[3], "0.0")
+    def test_thresholds(self):
+        """The fixed NOAA boundaries must be 0.5, 1, 5, 50."""
+        t = _build_noaa_table(99.0)
+        self.assertEqual(t[1], "0.5")
+        self.assertEqual(t[4], "1")
+        self.assertEqual(t[7], "5")
+        self.assertEqual(t[10], "50")
 
-    def test_binary_table_uses_infinite_bounds(self):
-        """Binary table should cover all values with -inf and inf bounds."""
-        t = _build_binary_table(99.0)
+    def test_table_uses_infinite_bounds(self):
+        """NOAA table should cover all values with -inf and inf bounds."""
+        t = _build_noaa_table(99.0)
         self.assertEqual(t[0], "-inf")
-        self.assertEqual(t[4], "inf")
+        self.assertEqual(t[13], "inf")
 
     def test_all_strings(self):
         """All entries must be strings (QGIS reclassifybytable requirement)."""
-        for entry in _build_binary_table(42.0):
+        for entry in _build_noaa_table(42.0):
             self.assertIsInstance(entry, str)
+
+    def test_zero_maps_to_score_one(self):
+        """Value 0 must map to score 1 (no/faint light), not be left unmapped."""
+        t = _build_noaa_table(99.0)
+        classes = _assign_classes([0.0], t)
+        self.assertEqual(classes[0], 1.0)
+
+    def test_threshold_boundary_assignment(self):
+        """Values at thresholds map to the correct NOAA scores."""
+        t = _build_noaa_table(99.0)
+        classes = _assign_classes([0.25, 0.75, 2.0, 25.0, 75.0], t)
+        self.assertEqual(classes, [1.0, 2.0, 3.0, 4.0, 5.0])
 
 
 class TestBuildReclassificationTable(unittest.TestCase):
     """Tests for _build_reclassification_table dispatching and output."""
 
-    # --- binary mode ---
+    # --- NOAA mode ---
 
-    def test_binary_mode_returns_6_elements(self):
-        attrs = {"ntl_classification_mode": "binary"}
+    def test_noaa_mode_returns_15_elements(self):
+        attrs = {"ntl_classification_mode": "noaa"}
         data = np.array([0.0, 0.0, 0.0, 5.0, 10.0, 20.0], dtype=np.float32)
         t = _build_reclassification_table(attrs, 20.0, 0.0, data)
-        self.assertEqual(len(t), 6)
+        self.assertEqual(len(t), 15)
 
-    def test_binary_mode_scores(self):
-        attrs = {"ntl_classification_mode": "binary"}
+    def test_noaa_mode_scores(self):
+        attrs = {"ntl_classification_mode": "noaa"}
         data = np.array([0.0, 1.0, 2.0], dtype=np.float32)
         t = _build_reclassification_table(attrs, 2.0, 1.0, data)
-        self.assertEqual(t[2], "0")
-        self.assertEqual(t[5], "5")
+        scores = [int(t[i]) for i in range(2, 15, 3)]
+        self.assertEqual(scores, [1, 2, 3, 4, 5])
 
     # --- dynamic min-max ("jenks") mode ---
 
