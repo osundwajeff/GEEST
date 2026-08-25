@@ -5,7 +5,11 @@ import os
 
 from qgis.PyQt.QtWidgets import QFileDialog
 
-from geest.core.constants import DEFAULT_S2S_ENV_HAZARD_FIELDS
+from geest.core.constants import (
+    DEFAULT_S2S_ENV_HAZARD_FIELDS,
+    ENV_HAZARD_SOURCE_LABELS,
+    ENV_HAZARD_SOURCE_URLS,
+)
 
 from .s2s_datasource_widget import S2SDataSourceWidget
 from .s2s_ntl_raster_datasource_widget import S2SNTLRasterDataSourceWidget
@@ -71,6 +75,11 @@ class S2SEnvironmentalHazardsRasterDataSourceWidget(S2SNTLRasterDataSourceWidget
             self.s2s_vector_field_combo.setVisible(False)
         self.s2s_ntl_field = self._hazard_field_from_attributes()
         self.s2s_status_label.setToolTip(f"S2S field: {self.s2s_ntl_field}")
+        hazard_id = self._hazard_id()
+        self._add_source_link(
+            ENV_HAZARD_SOURCE_URLS.get(hazard_id, ""),
+            ENV_HAZARD_SOURCE_LABELS.get(hazard_id, ""),
+        )
         self._select_existing_hazard_output_layer()
 
     def _update_vector_field_combo(self) -> None:

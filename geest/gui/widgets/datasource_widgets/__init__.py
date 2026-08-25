@@ -12,6 +12,9 @@ from .base_datasource_widget import BaseDataSourceWidget  # noqa F401
 from .csv_datasource_widget import CsvDataSourceWidget  # noqa F401
 from .download_task_controls import DownloadTaskControls  # noqa F401
 from .eplex_datasource_widget import EPLEXDataSourceWidget  # noqa F401
+from .environmental_hazards_raster_datasource_widget import (  # noqa F401
+    EnvironmentalHazardsRasterDataSourceWidget,
+)
 from .fixed_value_datasource_widget import FixedValueDataSourceWidget  # noqa F401
 from .raster_datasource_widget import RasterDataSourceWidget  # noqa F401
 from .s2s_datasource_widget import S2SDataSourceWidget  # noqa F401
