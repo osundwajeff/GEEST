@@ -20,7 +20,7 @@ from qgis.core import (
 
 from geest.core import JsonTreeItem
 from geest.core.grid_column_utils import write_joined_values_to_grid, write_spatial_join_to_grid
-from geest.core.jenks import calculate_goodness_of_variance_fit, jenks_natural_breaks
+from geest.core.jenks import jenks_natural_breaks
 from geest.utilities import log_message
 
 from .workflow_base import WorkflowBase, WorkflowNotConfiguredError
@@ -261,28 +261,12 @@ class SafetyRasterWorkflow(WorkflowBase):
 
         valid_data = np.asarray(values, dtype=float)
         breaks = jenks_natural_breaks(valid_data, n_classes=6)
-        _ = calculate_goodness_of_variance_fit(valid_data, breaks)
-
-        reclass_table = [
-            str(0.0),
-            str(breaks[0]),
-            "0",
-            str(breaks[0]),
-            str(breaks[1]),
-            "1",
-            str(breaks[1]),
-            str(breaks[2]),
-            "2",
-            str(breaks[2]),
-            str(breaks[3]),
-            "3",
-            str(breaks[3]),
-            str(breaks[4]),
-            "4",
-            str(breaks[4]),
-            str(breaks[5]),
-            "5",
-        ]
+        reclass_table = self._build_reclass_table_from_breaks(breaks)
+        log_message(
+            f"Dynamic NTL classification table for area {area_name}: {reclass_table}",
+            tag="GeoE3",
+            level=Qgis.Info,
+        )
         return reclassify_grid_column_with_table(
             gpkg_path=self.gpkg_path,
             column_name=self.layer_id,
@@ -406,7 +390,7 @@ class SafetyRasterWorkflow(WorkflowBase):
 
         Reads ``ntl_classification_mode`` from the item attributes:
         - ``"binary"``  → 2 classes (0=No Access, 5=Light Present)
-        - ``"jenks"``   → 6 classes via Jenks Natural Breaks (default; also used when the
+        - otherwise     → 6 dynamic equal-count classes (default; also used when the
                           attribute is absent for backward compatibility with existing models)
 
         Args:
@@ -416,8 +400,6 @@ class SafetyRasterWorkflow(WorkflowBase):
         Returns:
             Reclassification table as list of [min, max, class, min, max, class, ...]
             formatted as strings for QGIS native:reclassifybytable algorithm
-        Raises:
-            ValueError: If Jenks Natural Breaks cannot compute valid classification breaks
         """
         classification_mode = self.attributes.get("ntl_classification_mode", "jenks")
         use_binary = classification_mode == "binary"
@@ -430,60 +412,41 @@ class SafetyRasterWorkflow(WorkflowBase):
             )
             return self._build_binary_table(max_val)
 
-        # Jenks Natural Breaks
-        n_classes = 6
+        # Dynamic min-max classification. Breaks are derived from the data's
+        # own min-max range so that every value maps to a class (no missing).
         log_message(
-            f"📊 Computing Jenks Natural Breaks classification (max={max_val:.6f}, "
+            f"📊 Computing dynamic NTL classification (max={max_val:.6f}, "
             f"median={median:.6f}, n={len(valid_data)})",
             tag="GeoE3",
             level=0,
         )
-        try:
-            # Returns: [break₁, break₂, break₃, break₄, break₅, max_value]
-            breaks = jenks_natural_breaks(valid_data, n_classes=n_classes)
-            gvf = calculate_goodness_of_variance_fit(valid_data, breaks)
+        breaks = jenks_natural_breaks(valid_data, n_classes=6)
+        reclass_table = self._build_reclass_table_from_breaks(breaks)
+        log_message(
+            f"✅ Dynamic NTL classification computed (6 equal-count classes spanning "
+            f"data min-max, no missing values): {reclass_table}",
+            tag="GeoE3",
+            level=0,
+        )
+        return reclass_table
 
-            # Build QGIS reclassification table format
-            # Format: [min₁, max₁, class₁, min₂, max₂, class₂, ...]
-            reclass_table = []
-            # Class 0: From 0 to first break
-            reclass_table.extend([0.0, breaks[0], 0])
-            # Classes 1-5: Between consecutive breaks
-            for i in range(len(breaks) - 1):
-                class_num = i + 1
-                min_val = breaks[i]
-                max_val_class = breaks[i + 1]
-                reclass_table.extend([min_val, max_val_class, class_num])
-            # Convert all values to strings for QGIS processing
-            reclass_table = list(map(str, reclass_table))
-            log_message(
-                f"✅ Jenks Natural Breaks computed:\n"
-                f"   Class 0 (No Access):  0.000 - {breaks[0]:.3f}\n"
-                f"   Class 1 (Very Low):   {breaks[0]:.3f} - {breaks[1]:.3f}\n"
-                f"   Class 2 (Low):        {breaks[1]:.3f} - {breaks[2]:.3f}\n"
-                f"   Class 3 (Moderate):   {breaks[2]:.3f} - {breaks[3]:.3f}\n"
-                f"   Class 4 (High):       {breaks[3]:.3f} - {breaks[4]:.3f}\n"
-                f"   Class 5 (Very High):  {breaks[4]:.3f} - {breaks[5]:.3f}\n"
-                f"   Quality (GVF): {gvf:.4f}",
-                tag="GeoE3",
-                level=0,
-            )
-            return reclass_table
-        except Exception as e:
-            # Fail workflow with clear error message
-            unique_count = len(np.unique(valid_data))
-            error_msg = (
-                f"❌ Jenks Natural Breaks classification failed: {e}\n"
-                f"   Data characteristics:\n"
-                f"     - Maximum value: {max_val:.6f}\n"
-                f"     - Median value: {median:.6f}\n"
-                f"     - Unique values: {unique_count}\n"
-                f"     - Total values: {len(valid_data)}\n"
-                f"   This may indicate insufficient data variation for meaningful classification.\n"
-                f"   Please verify your nighttime lights raster has valid data with reasonable variation."
-            )
-            log_message(error_msg, tag="GeoE3", level=2)  # Critical
-            raise ValueError(error_msg) from e
+    @staticmethod
+    def _build_reclass_table_from_breaks(breaks: list) -> list:
+        """Build a reclassification table from class breaks.
+
+        The first class extends from -inf (so every value maps to a class, no
+        missing values) and the final boundary is the data maximum.
+
+        Args:
+            breaks: Class break points, last entry is the data maximum.
+
+        Returns:
+            Reclassification table as list of [min, max, class, ...] strings.
+        """
+        reclass_table = ["-inf", str(breaks[0]), "0"]
+        for i in range(len(breaks) - 1):
+            reclass_table.extend([str(breaks[i]), str(breaks[i + 1]), str(i + 1)])
+        return reclass_table
 
     def _process_aggregate_for_area(
         self,

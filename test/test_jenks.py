@@ -1,33 +1,62 @@
 # -*- coding: utf-8 -*-
 """
-Unit tests for Jenks Natural Breaks classification module.
+Unit tests for the dynamic min-max (equal-count quantile) classification module.
 """
 
 import unittest
 
 import numpy as np
 
+from geest.core.grid_column_utils import _value_matches_range
 from geest.core.jenks import (
     calculate_goodness_of_variance_fit,
     jenks_natural_breaks,
 )
 
 
+def build_reclass_table(breaks) -> list:
+    """Mirror SafetyRasterWorkflow._build_reclass_table_from_breaks."""
+    reclass_table = ["-inf", str(breaks[0]), "0"]
+    for i in range(len(breaks) - 1):
+        reclass_table.extend([str(breaks[i]), str(breaks[i + 1]), str(i + 1)])
+    return reclass_table
+
+
+def assign_classes(data, breaks) -> list:
+    """Assign each value to a class using the workflow's range semantics."""
+    table = build_reclass_table(breaks)
+    parsed = []
+    for i in range(0, len(table), 3):
+        lower, upper, score = table[i], table[i + 1], table[i + 2]
+        lower = float("-inf") if isinstance(lower, str) and "inf" in lower else float(lower)
+        upper = float("inf") if isinstance(upper, str) and "inf" in upper else float(upper)
+        parsed.append((lower, upper, float(score)))
+
+    classes = []
+    for value in data:
+        mapped = None
+        for lower, upper, score in parsed:
+            if _value_matches_range(float(value), lower, upper, 0):
+                mapped = score
+                break
+        classes.append(mapped)
+    return classes
+
+
 class TestJenksNaturalBreaks(unittest.TestCase):
-    """Test suite for jenks_natural_breaks function."""
+    """Test suite for jenks_natural_breaks (dynamic min-max classifier)."""
 
     def test_basic_classification(self):
-        """Test basic Jenks classification with simple data."""
+        """Test basic classification with simple data."""
         data = np.array([1, 2, 3, 10, 11, 12, 20, 21, 22])
         breaks = jenks_natural_breaks(data, n_classes=3)
 
         self.assertEqual(len(breaks), 3)
         self.assertTrue(breaks[0] <= breaks[1] <= breaks[2])
-        self.assertEqual(breaks[-1], np.max(data))
+        self.assertEqual(breaks[-1], float(np.max(data)))
 
     def test_low_light_scenario(self):
         """Test classification with very low nighttime lights values."""
-        # Simulate VIIRS data with very low values (< 0.05)
         data = np.array([0.0, 0.001, 0.002, 0.005, 0.01, 0.015, 0.02, 0.03, 0.04])
         breaks = jenks_natural_breaks(data, n_classes=5)
 
@@ -35,58 +64,73 @@ class TestJenksNaturalBreaks(unittest.TestCase):
         self.assertTrue(all(0 <= b <= 0.04 for b in breaks))
         np.testing.assert_allclose(breaks[-1], 0.04, rtol=1e-6)
 
-    def test_viirs_like_distribution(self):
-        """Test with realistic VIIRS nighttime lights distribution."""
-        # Simulate real VIIRS data: mostly low values with some high outliers
-        np.random.seed(42)
-        low_values = np.random.exponential(scale=0.5, size=900)
-        high_values = np.random.uniform(5, 10, size=100)
+    def test_skewed_distribution_no_missing_values(self):
+        """Every value must map to a class - no missing/unmapped cells."""
+        rng = np.random.default_rng(42)
+        low_values = rng.exponential(scale=0.5, size=900)
+        high_values = rng.uniform(5, 10, size=100)
         data = np.concatenate([low_values, high_values])
 
         breaks = jenks_natural_breaks(data, n_classes=6)
+        classes = assign_classes(data, breaks)
 
         self.assertEqual(len(breaks), 6)
         self.assertTrue(breaks[0] < breaks[-1])
-        # Should capture the transition from low to high values
-        self.assertTrue(breaks[3] < breaks[4])  # Gap between moderate and high
+        self.assertEqual(sum(1 for c in classes if c is None), 0, "values left unmapped")
 
-    def test_uniform_distribution(self):
-        """Test with uniformly distributed data."""
+    def test_last_break_is_data_max(self):
+        """The final boundary must always be the data maximum."""
+        rng = np.random.default_rng(11)
+        data = np.clip(rng.lognormal(mean=5.1, sigma=0.9, size=3000), 96, 14440)
+        breaks = jenks_natural_breaks(data, n_classes=6)
+        self.assertEqual(breaks[-1], float(np.max(data)))
+
+    def test_min_maps_to_class_zero_max_to_five(self):
+        """The data minimum maps to class 0 and maximum to class 5."""
+        rng = np.random.default_rng(5)
+        data = np.clip(rng.lognormal(mean=5.1, sigma=0.9, size=3000), 96, 14440)
+        breaks = jenks_natural_breaks(data, n_classes=6)
+        classes = assign_classes(data, breaks)
+        self.assertEqual(classes[int(np.argmin(data))], 0.0)
+        self.assertEqual(classes[int(np.argmax(data))], 5.0)
+
+    def test_zero_value_maps_to_class_zero(self):
+        """NTL value 0 (no light) must map to class 0, not be left unmapped."""
+        data = np.array([0.0, 0.0, 1.0, 5.0, 10.0, 100.0, 1000.0, 10000.0, 14000.0, 14440.0])
+        breaks = jenks_natural_breaks(data, n_classes=6)
+        classes = assign_classes(data, breaks)
+        self.assertEqual(classes[0], 0.0)
+        self.assertEqual(classes[1], 0.0)
+        self.assertEqual(sum(1 for c in classes if c is None), 0)
+
+    def test_uniform_distribution_evenly_spaced(self):
+        """For uniform data, breaks should be roughly evenly spaced."""
         data = np.linspace(0, 100, 1000)
         breaks = jenks_natural_breaks(data, n_classes=4)
 
         self.assertEqual(len(breaks), 4)
-        # For uniform distribution, breaks should be roughly evenly spaced
         diffs = np.diff(breaks)
-        self.assertTrue(np.std(diffs) < np.mean(diffs) * 0.5)  # Reasonably uniform
+        self.assertTrue(np.std(diffs) < np.mean(diffs) * 0.5)
 
-    def test_normal_distribution(self):
-        """Test with normally distributed data."""
-        np.random.seed(123)
-        data = np.random.normal(loc=50, scale=10, size=5000)
+    def test_identical_values_no_missing(self):
+        """All-identical data must still return n_classes breaks (all equal)."""
+        data = np.array([5.0] * 100)
+        breaks = jenks_natural_breaks(data, n_classes=3)
+
+        self.assertEqual(len(breaks), 3)
+        self.assertTrue(all(b == 5.0 for b in breaks))
+        classes = assign_classes(data, breaks)
+        self.assertEqual(sum(1 for c in classes if c is None), 0)
+        self.assertEqual(set(classes), {0.0})
+
+    def test_few_unique_values_no_missing(self):
+        """Data with few unique values must still classify without errors."""
+        data = np.array([1, 1, 1, 2, 2, 2])  # Only 2 unique values
         breaks = jenks_natural_breaks(data, n_classes=5)
 
         self.assertEqual(len(breaks), 5)
-        self.assertTrue(breaks[0] < breaks[-1])
-        # Median break should be near the mean for normal distribution
-        median_break_idx = len(breaks) // 2
-        self.assertTrue(abs(breaks[median_break_idx] - 50) < 15)
-
-    def test_identical_values(self):
-        """Test with all identical values (edge case)."""
-        data = np.array([5.0] * 100)
-
-        with self.assertRaises(ValueError) as context:
-            jenks_natural_breaks(data, n_classes=3)
-        self.assertIn("Insufficient unique values", str(context.exception))
-
-    def test_exact_classes_match_unique_values(self):
-        """Test when number of unique values equals number of classes."""
-        data = np.array([1, 5, 10, 20, 50, 100])
-        breaks = jenks_natural_breaks(data, n_classes=6)
-
-        self.assertEqual(len(breaks), 6)
-        self.assertEqual(breaks[-1], 100)
+        classes = assign_classes(data, breaks)
+        self.assertEqual(sum(1 for c in classes if c is None), 0)
 
     def test_two_classes_minimum(self):
         """Test that minimum 2 classes are required."""
@@ -120,41 +164,20 @@ class TestJenksNaturalBreaks(unittest.TestCase):
         self.assertEqual(len(breaks), 3)
         self.assertFalse(np.any(np.isinf(breaks)))
 
-    def test_insufficient_unique_values(self):
-        """Test error when not enough unique values for classes."""
-        data = np.array([1, 1, 1, 2, 2, 2])  # Only 2 unique values
-
-        with self.assertRaises(ValueError) as context:
-            jenks_natural_breaks(data, n_classes=5)
-        self.assertIn("Insufficient unique values", str(context.exception))
-
-    def test_large_dataset_sampling(self):
-        """Test automatic sampling for very large datasets."""
-        # Create dataset with > 50K unique values
-        np.random.seed(999)
-        data = np.random.uniform(0, 100, size=100000)
+    def test_large_dataset(self):
+        """Test with a large dataset."""
+        rng = np.random.default_rng(999)
+        data = rng.uniform(0, 100, size=100000)
 
         breaks = jenks_natural_breaks(data, n_classes=5)
 
         self.assertEqual(len(breaks), 5)
         self.assertTrue(breaks[0] < breaks[-1])
-        # Despite sampling, should still produce reasonable breaks
-
-    def test_sparse_data(self):
-        """Test with sparse data (large gaps between values)."""
-        data = np.array([1, 2, 100, 101, 1000, 1001])
-        breaks = jenks_natural_breaks(data, n_classes=3)
-
-        self.assertEqual(len(breaks), 3)
-        # Should identify the natural clusters
-        self.assertTrue(breaks[0] < 100)  # First cluster
-        self.assertTrue(100 <= breaks[1] < 1000)  # Second cluster
-        self.assertTrue(breaks[2] >= 1000)  # Third cluster
 
     def test_breaks_monotonic_increasing(self):
         """Test that breaks are always monotonically increasing."""
-        np.random.seed(456)
-        data = np.random.exponential(scale=2, size=1000)
+        rng = np.random.default_rng(456)
+        data = rng.exponential(scale=2, size=1000)
 
         for n_classes in range(2, 8):
             breaks = jenks_natural_breaks(data, n_classes=n_classes)
@@ -183,7 +206,7 @@ class TestJenksNaturalBreaks(unittest.TestCase):
         breaks = jenks_natural_breaks(data, n_classes=3)
 
         self.assertEqual(len(breaks), 3)
-        self.assertEqual(breaks[-1], 22)
+        self.assertEqual(breaks[-1], 22.0)
 
 
 class TestGoodnessOfVarianceFit(unittest.TestCase):
@@ -191,21 +214,18 @@ class TestGoodnessOfVarianceFit(unittest.TestCase):
 
     def test_perfect_classification(self):
         """Test GVF with well-separated classes."""
-        # Three well-separated clusters with clear boundaries
         data = np.array([1, 1, 1, 10, 10, 10, 100, 100, 100])
         breaks = jenks_natural_breaks(data, n_classes=3)
 
         gvf = calculate_goodness_of_variance_fit(data, breaks)
 
-        # GVF should be between 0 and 1
         self.assertTrue(0.0 <= gvf <= 1.0)
-        # For this data, GVF should be reasonable (not perfect due to within-class variance)
         self.assertTrue(gvf > 0.2)
 
     def test_gvf_range(self):
         """Test that GVF is always between 0 and 1."""
-        np.random.seed(789)
-        data = np.random.uniform(0, 100, size=1000)
+        rng = np.random.default_rng(789)
+        data = rng.uniform(0, 100, size=1000)
 
         for n_classes in range(2, 6):
             breaks = jenks_natural_breaks(data, n_classes=n_classes)
@@ -220,7 +240,6 @@ class TestGoodnessOfVarianceFit(unittest.TestCase):
 
         gvf = calculate_goodness_of_variance_fit(data, breaks)
 
-        # Should be 1.0 (perfect fit - no variance to explain)
         np.testing.assert_allclose(gvf, 1.0)
 
     def test_gvf_with_nan_values(self):
@@ -244,8 +263,8 @@ class TestGoodnessOfVarianceFit(unittest.TestCase):
 
     def test_gvf_increases_with_classes(self):
         """Test that GVF generally increases with more classes."""
-        np.random.seed(321)
-        data = np.random.exponential(scale=5, size=1000)
+        rng = np.random.default_rng(321)
+        data = rng.exponential(scale=5, size=1000)
 
         gvf_values = []
         for n_classes in range(2, 8):
@@ -253,10 +272,13 @@ class TestGoodnessOfVarianceFit(unittest.TestCase):
             gvf = calculate_goodness_of_variance_fit(data, breaks)
             gvf_values.append(gvf)
 
-        # GVF should generally increase (or stay same) with more classes
         self.assertTrue(
             all(
                 gvf_values[i] <= gvf_values[i + 1] + 0.01  # Allow small floating point variations
                 for i in range(len(gvf_values) - 1)
             )
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
