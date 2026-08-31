@@ -13,7 +13,7 @@ from qgis.PyQt.QtWidgets import QMessageBox, QTreeView
 
 from geest.core import JsonTreeItem
 from geest.core.constants import DEFAULT_S2S_POPULATION_FIELD
-from geest.utilities import log_message
+from geest.utilities import log_message, title_case
 
 
 class JsonTreeModel(QAbstractItemModel):
@@ -211,7 +211,7 @@ class JsonTreeModel(QAbstractItemModel):
         Returns:
             JsonTreeItem: The created dimension item.
         """
-        dimension_name = dimension["name"].title()  # Title case for dimensions
+        dimension_name = title_case(dimension["name"])  # Title case for dimensions
         dimension_attributes = {
             "id": dimension.get("id", ""),
             "output_filename": dimension.get("output_filename", ""),
@@ -272,7 +272,7 @@ class JsonTreeModel(QAbstractItemModel):
         guid = factor.get("guid", str(uuid.uuid4()))  # Deserialize UUID
         factor_item = JsonTreeItem(
             [
-                factor["name"],
+                title_case(factor["name"]),
                 status,
                 factor.get("dimension_weighting", 0),
                 factor_attributes,
@@ -296,7 +296,7 @@ class JsonTreeModel(QAbstractItemModel):
         guid = indicator.get("guid", str(uuid.uuid4()))  # Deserialize UUID
         indicator_item = JsonTreeItem(
             [
-                indicator["indicator"],
+                title_case(indicator["indicator"]),
                 status,
                 indicator.get("factor_weighting", 0),
                 indicator,
