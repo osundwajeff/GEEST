@@ -28,6 +28,7 @@ from geest.utilities import (
     resources_path,
     theme_background_image,
     theme_stylesheet,
+    title_case,
     vector_layer_type,
     version,
 )
@@ -383,6 +384,38 @@ class TestUtilities(unittest.TestCase):
         mock_is_dark.return_value = False
         style = theme_stylesheet()
         self.assertIn("background-color: rgba(255, 255, 255, 255)", style)
+
+    def test_title_case_acronyms_and_digits_preserved(self):
+        """Acronyms and digit tokens are not mangled by title_case."""
+        self.assertEqual(title_case("WBL 2024 Workplace Index Score"), "WBL 2024 Workplace Index Score")
+        self.assertEqual(title_case("ACLED data (Violence Estimated Events)"), "ACLED Data (Violence Estimated Events)")
+        self.assertEqual(title_case("Location of Banks and other FF"), "Location of Banks and Other FF")
+
+    def test_title_case_apostrophes(self):
+        """Apostrophes are handled without capitalising the following letter."""
+        self.assertEqual(title_case("Women's Travel Patterns"), "Women's Travel Patterns")
+
+    def test_title_case_small_words(self):
+        """Joining words stay lowercase unless first or last."""
+        self.assertEqual(title_case("Access to Public Transport"), "Access to Public Transport")
+        self.assertEqual(title_case("Location of kindergartens/childcare"), "Location of Kindergartens/Childcare")
+        self.assertEqual(
+            title_case("Percentage of the labor force with university degrees"),
+            "Percentage of the Labor Force with University Degrees",
+        )
+        self.assertEqual(
+            title_case("Average value of WBL Pay Score and Parenthood Index Score"),
+            "Average Value of WBL Pay Score and Parenthood Index Score",
+        )
+
+    def test_title_case_fixes_sentence_case(self):
+        """Sentence-case and mixed-case inputs are normalised."""
+        self.assertEqual(title_case("Water sanitation"), "Water Sanitation")
+        self.assertEqual(title_case("Street lights/Night time lights"), "Street Lights/Night Time Lights")
+        self.assertEqual(
+            title_case("Location of public transportation stops, including maritime"),
+            "Location of Public Transportation Stops, Including Maritime",
+        )
 
 
 if __name__ == "__main__":

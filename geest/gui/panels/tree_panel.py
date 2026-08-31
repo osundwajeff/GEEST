@@ -355,6 +355,7 @@ class TreePanel(QWidget):
 
         show_layer_on_click = setting(key="show_layer_on_click", default=True)
         if show_layer_on_click:
+            analysis_raster_key = "result_file"
             if item.role == "dimension":
                 column_name = f"dim_{item.attribute('id').lower().replace(' ', '_').replace('-', '_')}"
             elif item.role == "factor":
@@ -362,12 +363,16 @@ class TreePanel(QWidget):
             elif item.role == "indicator":
                 column_name = item.attribute("id").lower().replace(" ", "_").replace("-", "_")
             elif item.role == "analysis":
-                column_name = "geoe3"  # Analysis aggregation uses geoe3 column
+                use_masked, analysis_raster_key = self._analysis_display(item)
+                column_name = "geoe3_masked" if use_masked else "geoe3"  # Analysis aggregation uses geoe3 column
             else:
                 column_name = None
 
             if column_name is None or self._get_render_strategy() == "raster":
-                add_to_map(item)
+                if item.role == "analysis":
+                    add_to_map(item, key=analysis_raster_key, layer_name="GeoE3 Score", group="GeoE3")
+                else:
+                    add_to_map(item)
             else:
                 add_grid_layer_to_map(item, column_name, self.working_directory)
         # TEMPORARY: Disable writing layer name into top-left overlay label.
@@ -378,6 +383,27 @@ class TreePanel(QWidget):
         if show_pie:
             # TODO - calculate the pie data
             QSettings().setValue("geoe3/pie_data", item.data(0))
+
+    def _analysis_display(self, item):
+        """Return how the analysis result should be displayed.
+
+        Mirror the decision taken when a workflow completes so that clicking
+        the analysis item re-shows the same layer that was last added to the
+        map.
+
+        Args:
+            item: The analysis tree item.
+
+        Returns:
+            tuple: (use_masked, raster_key) where raster_key is the attribute
+                holding the GeoE3 score raster, preferring the masked VRT when
+                a mask mode is active and the masked product exists.
+        """
+        mask_mode = item.attribute("mask_mode", "None")
+        masked_vrt = item.attribute("geoe3_score_ghsl_masked_result_file", "")
+        use_masked = mask_mode not in ("", "None", "none") and bool(masked_vrt)
+        raster_key = "geoe3_score_ghsl_masked_result_file" if use_masked else "result_file"
+        return use_masked, raster_key
 
     def on_previous_button_clicked(self):
         """⚙️ On previous button clicked."""
@@ -2305,12 +2331,10 @@ class TreePanel(QWidget):
             self.calculate_analysis_insights(item)
 
         # Add layer to map after workflow completes using auto-determined strategy
+        use_masked = False
+        analysis_raster_key = "result_file"
         if item.role == "analysis":
-            mask_mode = item.attribute("mask_mode", "None")
-            masked_vrt = item.attribute("geoe3_score_ghsl_masked_result_file", "")
-            use_masked = mask_mode not in ("", "None", "none") and bool(masked_vrt)
-        else:
-            use_masked = False
+            use_masked, analysis_raster_key = self._analysis_display(item)
         if item.role == "dimension":
             column_name = f"dim_{item.attribute('id').lower().replace(' ', '_').replace('-', '_')}"
         elif item.role == "factor":
@@ -2325,7 +2349,7 @@ class TreePanel(QWidget):
         if item.role == "analysis" and use_masked and self._get_render_strategy() == "raster":
             add_to_map(
                 item,
-                key="geoe3_score_ghsl_masked_result_file",
+                key=analysis_raster_key,
                 layer_name="GeoE3 Score",
                 group="GeoE3",
             )
