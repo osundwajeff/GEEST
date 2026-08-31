@@ -4,6 +4,11 @@
 
 ### 1. Update Version in config.json
 
+Before releasing, add a new `Version X.Y.Z - <title>` block at the top of
+`docs/plugin/changelog.txt` mirroring the `CHANGELOG.md` `[Unreleased]`
+entries — `admin.py` bakes this file (not `CHANGELOG.md`) into the plugin
+`metadata.txt` shown in the QGIS Plugin Manager.
+
 Edit `config.json`:
 
 ```json

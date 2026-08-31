@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   WAL checkpoint in the process is serialised behind one lock, all layers
   (including `chunks`) are pre-created before worker threads start, and
   map refreshes are deferred while the writer is active.
+- Environmental-hazard indicators now expose a clickable link to the source
+  dataset in the World Bank Data Catalog for the selected hazard (fire,
+  flood, landslide, cyclone, drought) (#398).
+- Regional analyses now pull population demographics automatically from S2S
+  when the population source is S2S — new population-vector processing task
+  plus a population-source UI in the analysis aggregation dialog (#431).
+- Nighttime Lights supports NOAA threshold classification (fixed Black
+  Marble value ranges, 5 classes) alongside Jenks Natural Breaks; the binary
+  option was replaced by the NOAA thresholds option (#396).
 
 ### Changed
 
@@ -60,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dev shell recreates `.venv` automatically when the nix python
   interpreter changes (a stale venv made pip write into the read-only
   store).
+- Flood data sources now work at both analysis scales: the raster (DDH
+  0–900) path is available in regional analyses and the S2S path in
+  national/local ones, with the S2S join using intersection-MAX; the source
+  is auto-derived from the indicator configuration (#423).
+- Tree headings are now consistently Title Case (acronym/apostrophe-safe),
+  normalised at render time so existing projects' stored model.json is
+  unaffected.
 
 ### Fixed
 
@@ -129,6 +145,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`test/test_geoe3_dock_construction.py`) builds the complete dock — all
   panels — on both PyQt5 and PyQt6 images so constructor-time porting
   regressions fail the suite instead of plugin load.
+- GHSL masking (#420, #421): the GHSL options mask now uses the
+  `ghsl_settlements` layer already stored in the study-area GeoPackage
+  (clipped and reprojected at project setup) instead of depending on the
+  `ghsl_settlements_layer.parquet` download path, so masked scoring no
+  longer fails when that file is missing or empty.
+- Landslide environmental-hazard scoring in regional analyses was reversed
+  and is now corrected (#428).
+- Regional S2S Nighttime Lights scoring was inaccurate: NTL classification
+  now derives six dynamic classes from the data's own min–max range instead
+  of Jenks breaks, so every cell value maps to a class and nothing renders
+  unclassified (#424).
+- Indicator dropdowns in the factor and dimension aggregation dialogs no
+  longer shift left when toggling between indicators (vertical scrollbar
+  pinned).
+- Environmental-hazards datasource rows are better balanced: the source link
+  sits beside the file selector, the layer combo is width-capped, and rows
+  no longer hug the table border.
+- Clicking the GeoE3 Score node now re-shows the last run result — the masked
+  score when a mask is active — instead of always reverting to the raw
+  score.
 
 ## [2.1.0] - 2026-07-13
 
