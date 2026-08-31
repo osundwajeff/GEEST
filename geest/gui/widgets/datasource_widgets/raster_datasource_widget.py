@@ -61,6 +61,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         self.raster_layer_combo = QgsMapLayerComboBox()
         self.raster_layer_combo.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
         self.raster_layer_combo.setAllowEmptyLayer(True)
+        self.raster_layer_combo.setMaximumWidth(420)
         # Insert placeholder text at the top (only visually, not as a selectable item)
         self.raster_layer_combo.setCurrentIndex(-1)  # Ensure no selection initially
         self.raster_layer_combo.setEditable(True)  # Make editable temporarily for placeholder
@@ -117,9 +118,10 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
     def _add_source_link(self, url: str, label: str) -> None:
         """Add a clickable hyperlink that opens the source dataset in a browser.
 
-        The link is laid out with horizontal size policy ``Ignored`` and no
-        stretched natural width, so it only ever consumes trailing spare space
-        and never changes the width of the other widgets or the table rows.
+        The link is laid out with a ``Preferred`` horizontal size policy and a
+        minimum width, so it reserves its text width and sits immediately after
+        the other controls without creating a large empty gap or widening the
+        table rows.
 
         Args:
             url: The URL to open when the link is clicked.
@@ -132,15 +134,16 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         self._source_link_label = QLabel(f'<a href="{url}">{label}</a>')
         self._source_link_label.setOpenExternalLinks(True)
         self._source_link_label.setWordWrap(False)
-        self._source_link_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._source_link_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self._source_link_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._source_link_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._source_link_label.setMinimumWidth(160)
         self._source_link_label.setStyleSheet("color: #2d5a75; font-size: 11px; padding: 0px;")
         self._source_link_label.setToolTip(
             f"Download {label} from the World Bank Data Catalog"
             if label
             else "Download source data from the World Bank Data Catalog"
         )
-        self.layout.addWidget(self._source_link_label, stretch=1)
+        self.layout.addWidget(self._source_link_label)
 
     def _elide_source_link(self) -> None:
         """Render the source link text ellipsized to fit the available width."""
