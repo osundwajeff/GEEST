@@ -137,6 +137,10 @@ class S2SEnvironmentalHazardsRasterDataSourceWidget(S2SNTLRasterDataSourceWidget
         super().update_attributes()
         self.attributes["s2s_hazard_field"] = self.s2s_ntl_field
         self.attributes["s2s_ntl_field"] = ""
+        if self.s2s_output_path and os.path.exists(self.s2s_output_path):
+            self.attributes["environmental_hazards_source"] = "s2s"
+        else:
+            self.attributes["environmental_hazards_source"] = "raster"
 
     def _select_existing_hazard_output_layer(self) -> None:
         """Auto-select existing S2S hazard output when available."""

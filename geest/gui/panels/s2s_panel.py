@@ -139,7 +139,8 @@ class S2SPanel(FORM_CLASS, QWidget):
             self.switch_to_next_tab.emit()
             return
 
-        if model.get("analysis_scale") != "regional":
+        analysis_scale = model.get("analysis_scale")
+        if analysis_scale != "regional" and not self._model_has_flood_hazard(model):
             self.switch_to_next_tab.emit()
             return
 
@@ -246,10 +247,41 @@ class S2SPanel(FORM_CLASS, QWidget):
         self._schedule_next_s2s_prefetch_job(aoi_feature, 0)
         return True
 
+    @staticmethod
+    def _model_has_flood_hazard(model: dict) -> bool:
+        """Return True when the model configures the flood environmental hazard.
+
+        Non-regional projects may prefetch the flood S2S data (which is now
+        joined by spatial intersection instead of H3 key), so this gate lets
+        the prefetch run for flood at National/Local scale.
+
+        Args:
+            model: Parsed model.json dictionary.
+
+        Returns:
+            True if a flood hazard indicator with S2S support exists.
+        """
+        for dimension in model.get("dimensions", []):
+            for factor in dimension.get("factors", []):
+                for indicator in factor.get("indicators", []):
+                    if (
+                        str(indicator.get("id", "")).strip().lower() == "flood"
+                        and int(indicator.get("use_environmental_hazards", 0)) == 1
+                    ):
+                        return True
+        return False
+
     def _prepare_s2s_prefetch_jobs(self, model: dict) -> tuple[list, list]:
-        """Build a list of S2S prefetch jobs and non-blocking warnings."""
+        """Build a list of S2S prefetch jobs and non-blocking warnings.
+
+        For non-regional scales only the flood environmental hazard job is
+        produced (S2S flood is joined by spatial intersection, so it works on
+        the National/Local grid); all other S2S data types remain regional.
+        """
         jobs: List[Dict] = []
         warnings: List[str] = []
+
+        regional = model.get("analysis_scale") == "regional"
 
         ntl_indicators: List[str] = []
         ntl_field = DEFAULT_S2S_NTL_FIELD
@@ -261,7 +293,7 @@ class S2SPanel(FORM_CLASS, QWidget):
                     if not indicator_id:
                         continue
 
-                    if int(indicator.get("use_nighttime_lights", 0)) == 1:
+                    if regional and int(indicator.get("use_nighttime_lights", 0)) == 1:
                         ntl_indicators.append(indicator_id)
                         indicator_field = str(indicator.get("s2s_ntl_field") or "").strip()
                         if indicator_field:
@@ -269,6 +301,8 @@ class S2SPanel(FORM_CLASS, QWidget):
 
                     if int(indicator.get("use_environmental_hazards", 0)) == 1:
                         hazard_id = indicator_id.lower()
+                        if hazard_id != "flood" and not regional:
+                            continue
                         hazard_field = str(indicator.get("s2s_hazard_field") or "").strip()
                         if hazard_field == DEFAULT_S2S_NTL_FIELD:
                             hazard_field = ""
@@ -287,7 +321,7 @@ class S2SPanel(FORM_CLASS, QWidget):
                             }
                         )
 
-                    if int(indicator.get("use_polygon_per_cell", 0)) == 1:
+                    if regional and int(indicator.get("use_polygon_per_cell", 0)) == 1:
                         fields = indicator.get("s2s_fields", [])
                         if isinstance(fields, str):
                             fields = [token.strip() for token in fields.split(",") if token.strip()]
@@ -337,15 +371,16 @@ class S2SPanel(FORM_CLASS, QWidget):
                 },
             )
 
-        jobs.append(
-            {
-                "type": "demographics",
-                "indicator_ids": [],
-                "fields": [DEFAULT_S2S_POPULATION_FIELD],
-                "filename": "s2s_demographics",
-                "metadata": {"s2s_population_field": DEFAULT_S2S_POPULATION_FIELD},
-            }
-        )
+        if regional:
+            jobs.append(
+                {
+                    "type": "demographics",
+                    "indicator_ids": [],
+                    "fields": [DEFAULT_S2S_POPULATION_FIELD],
+                    "filename": "s2s_demographics",
+                    "metadata": {"s2s_population_field": DEFAULT_S2S_POPULATION_FIELD},
+                }
+            )
 
         return jobs, warnings
 

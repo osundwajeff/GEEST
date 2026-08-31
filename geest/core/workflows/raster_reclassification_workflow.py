@@ -20,7 +20,7 @@ from geest.core import JsonTreeItem
 from geest.core.constants import DEFAULT_S2S_ENV_HAZARD_FIELDS, DEFAULT_S2S_NTL_FIELD, GDAL_OUTPUT_DATA_TYPE
 from geest.core.grid_column_utils import (
     reclassify_grid_column_with_table,
-    write_joined_values_to_grid,
+    write_spatial_join_to_grid,
     write_uniform_value_to_grid,
 )
 from geest.utilities import log_message
@@ -57,9 +57,15 @@ class RasterReclassificationWorkflow(WorkflowBase):
         self.workflow_name = "use_environmental_hazards"
         self.s2s_output_path = self.attributes.get("s2s_output_path", "")
         self.s2s_hazard_field = self._resolve_s2s_hazard_field()
-        self._use_s2s_grid_path = bool(
-            self.analysis_scale == "regional" and self.s2s_output_path and self.s2s_hazard_field
-        )
+        is_flood = self.layer_id == "flood"
+        source_attr = str(self.attributes.get("environmental_hazards_source", "") or "").strip().lower()
+        if is_flood:
+            # Flood supports either source at any scale. Empty source is
+            # derived automatically: S2S when an S2S output is configured.
+            use_s2s = source_attr == "s2s" or (source_attr == "" and self.s2s_output_path and self.s2s_hazard_field)
+        else:
+            use_s2s = self.analysis_scale == "regional"
+        self._use_s2s_grid_path = bool(use_s2s and self.s2s_output_path and self.s2s_hazard_field)
         self._configure_reclassification_rules()
 
         if self._use_s2s_grid_path:
@@ -67,7 +73,7 @@ class RasterReclassificationWorkflow(WorkflowBase):
             self.use_grid_first = True
             self.raster_layer = None
             log_message(
-                f"Using regional S2S grid path for environmental hazards ({self.layer_id}) field '{self.s2s_hazard_field}'.",
+                f"Using S2S grid path for environmental hazards ({self.layer_id}) field '{self.s2s_hazard_field}'.",
                 tag="GeoE3",
                 level=Qgis.Info,
             )
@@ -331,15 +337,15 @@ class RasterReclassificationWorkflow(WorkflowBase):
             raise ValueError("area_name is required for regional S2S environmental hazards processing.")
 
         source_layer = os.path.splitext(os.path.basename(self.s2s_output_path))[0]
-        updated_count = write_joined_values_to_grid(
+        updated_count = write_spatial_join_to_grid(
             gpkg_path=self.gpkg_path,
             column_name=self.layer_id,
-            source_gpkg=self.s2s_output_path,
-            source_layer=source_layer,
-            source_key_field="hex_id",
-            target_key_field="h3_index",
-            source_value_field=self.s2s_hazard_field,
+            features_gpkg=self.s2s_output_path,
+            features_layer=source_layer,
+            score_expression=self.s2s_hazard_field,
             area_name=area_name,
+            aggregation_method="MAX",
+            save_buffers=False,
         )
 
         if updated_count < 0:
