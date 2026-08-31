@@ -180,7 +180,8 @@ class PopulationVectorProcessingTask(QgsTask):
                 level=Qgis.Warning,
             )
             self._execute_class_update(
-                f"UPDATE study_area_grid SET {population_col} = 1 " f"WHERE {raw_col} IS NOT NULL"
+                f"UPDATE study_area_grid SET {population_col} = 1 "
+                f"WHERE {raw_col} IS NOT NULL"  # nosec B608 -- identifiers quoted, literal value
             )
             return
 
@@ -196,7 +197,7 @@ class PopulationVectorProcessingTask(QgsTask):
         )
 
         class_update_sql = (
-            f"UPDATE study_area_grid SET {population_col} = CASE "
+            f"UPDATE study_area_grid SET {population_col} = CASE "  # nosec B608 -- identifiers quoted, numeric literals
             f"WHEN {raw_col} IS NULL THEN NULL "
             f"WHEN {raw_col} <= {break1:.10f} THEN 1 "
             f"WHEN {raw_col} <= {break2:.10f} THEN 2 "
