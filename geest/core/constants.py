@@ -23,6 +23,7 @@ GDAL_OUTPUT_DATA_TYPE = 6  # Float32
 
 # Space2Stats defaults
 DEFAULT_S2S_NTL_FIELD = "sum_viirs_ntl_2024"
+DEFAULT_S2S_POPULATION_FIELD = "sum_pop_2024"
 DEFAULT_S2S_ENV_HAZARD_FIELDS = {
     "fire": "fires_density_mean",
     "flood": "pop_flood_pct",

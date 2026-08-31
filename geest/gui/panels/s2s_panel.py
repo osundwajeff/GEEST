@@ -23,6 +23,7 @@ from geest.core.constants import (
     DEFAULT_S2S_EDUCATION_URBANIZATION_FIELDS,
     DEFAULT_S2S_ENV_HAZARD_FIELDS,
     DEFAULT_S2S_NTL_FIELD,
+    DEFAULT_S2S_POPULATION_FIELD,
 )
 from geest.core.s2s_task_gate import S2STaskGate
 from geest.core.tasks import S2SDownloaderTask
@@ -335,6 +336,16 @@ class S2SPanel(FORM_CLASS, QWidget):
                     "metadata": {"s2s_ntl_field": ntl_field},
                 },
             )
+
+        jobs.append(
+            {
+                "type": "demographics",
+                "indicator_ids": [],
+                "fields": [DEFAULT_S2S_POPULATION_FIELD],
+                "filename": "s2s_demographics",
+                "metadata": {"s2s_population_field": DEFAULT_S2S_POPULATION_FIELD},
+            }
+        )
 
         return jobs, warnings
 
@@ -690,7 +701,12 @@ class S2SPanel(FORM_CLASS, QWidget):
         """Persist S2S output metadata into matching indicator attributes."""
         updates_by_indicator: Dict[str, List[Dict]] = {}
         for update in updates:
-            for indicator_id in update.get("indicator_ids", []):
+            indicator_ids = update.get("indicator_ids", [])
+            if not indicator_ids and update.get("metadata", {}).get("s2s_population_field"):
+                model["population_s2s_output_path"] = update["output_path"]
+                model["population_s2s_field"] = update["metadata"]["s2s_population_field"]
+                continue
+            for indicator_id in indicator_ids:
                 updates_by_indicator.setdefault(indicator_id, []).append(update)
 
         for dimension in model.get("dimensions", []):

@@ -53,10 +53,11 @@ from geest.core.algorithms import (
     OpportunitiesByWeeScoreProcessingTask,
     OpportunitiesMaskProcessor,
     PopulationRasterProcessingTask,
+    PopulationVectorProcessingTask,
     SubnationalAggregationProcessingTask,
     WEEByPopulationScoreProcessingTask,
 )
-from geest.core.constants import MAX_FEATURES_FOR_VECTOR
+from geest.core.constants import DEFAULT_S2S_POPULATION_FIELD, MAX_FEATURES_FOR_VECTOR
 from geest.core.i18n import tr
 from geest.core.reports import StudyAreaReport
 from geest.core.settings import set_setting, setting
@@ -2379,19 +2380,46 @@ class TreePanel(QWidget):
         log_message("Calculating analysis insights")
         log_message("############################################")
         log_message(item.attributesAsMarkdown())
-        # Prepare the population data if provided
-        population_data = item.attribute("population_layer_source", None)
         gpkg_path = os.path.join(self.working_directory, "study_area", "study_area.gpkg")
         feedback = QgsFeedback()
         context = QgsProcessingContext()
-        population_processor = PopulationRasterProcessingTask(
-            population_raster_path=population_data,
-            working_directory=self.working_directory,
-            study_area_gpkg_path=gpkg_path,
-            cell_size_m=self.cell_size_m(),
-            feedback=feedback,
+
+        analysis_scale = item.attribute("analysis_scale", "national")
+        s2s_pop_path = item.attribute("population_s2s_output_path", None)
+        population_source = item.attribute("population_source", "raster")
+
+        use_s2s = (
+            analysis_scale == "regional"
+            and population_source == "s2s"
+            and s2s_pop_path
+            and os.path.exists(s2s_pop_path)
         )
-        population_processor.run()
+
+        if use_s2s:
+            s2s_field = item.attribute("population_s2s_field", "") or DEFAULT_S2S_POPULATION_FIELD
+            log_message(
+                f"Using S2S demographics for population processing: {s2s_field}",
+                tag="GeoE3",
+                level=Qgis.Info,
+            )
+            population_processor = PopulationVectorProcessingTask(
+                s2s_output_path=s2s_pop_path,
+                s2s_field=s2s_field,
+                study_area_gpkg_path=gpkg_path,
+                working_directory=self.working_directory,
+                cell_size_m=self.cell_size_m(),
+            )
+            population_processor.run()
+        else:
+            population_data = item.attribute("population_layer_source", None)
+            population_processor = PopulationRasterProcessingTask(
+                population_raster_path=population_data,
+                working_directory=self.working_directory,
+                study_area_gpkg_path=gpkg_path,
+                cell_size_m=self.cell_size_m(),
+                feedback=feedback,
+            )
+            population_processor.run()
         geoe3_processor = WEEByPopulationScoreProcessingTask(
             study_area_gpkg_path=gpkg_path,
             working_directory=self.working_directory,

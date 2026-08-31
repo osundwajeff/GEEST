@@ -15,6 +15,7 @@ from .opportunities_by_wee_score_population_processor import (
 from .opportunities_by_wee_score_processor import OpportunitiesByWeeScoreProcessingTask
 from .opportunities_mask_processor import OpportunitiesMaskProcessor
 from .population_processor import PopulationRasterProcessingTask
+from .population_vector_processor import PopulationVectorProcessingTask
 from .subnational_aggregation_processor import SubnationalAggregationProcessingTask
 from .utilities import (
     assign_crs_to_raster_layer,

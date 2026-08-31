@@ -4,9 +4,20 @@
 This module contains functionality for analysis aggregation dialog.
 """
 
+import json
+import os
 from urllib.parse import unquote
 
-from qgis.core import Qgis, QgsMapLayerProxyModel, QgsProject
+from qgis.core import (
+    Qgis,
+    QgsApplication,
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
+    QgsGeometry,
+    QgsMapLayerProxyModel,
+    QgsProject,
+    QgsVectorLayer,
+)
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt.QtCore import QByteArray, QSettings, Qt, QUrl
 from qgis.PyQt.QtGui import QDesktopServices, QPixmap
@@ -21,6 +32,7 @@ from qgis.PyQt.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
@@ -29,8 +41,12 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from geest.core import S2STaskGate
+from geest.core.constants import DEFAULT_S2S_POPULATION_FIELD
 from geest.core.settings import setting
+from geest.core.tasks import S2SDownloaderTask
 from geest.gui.widgets import CustomBannerLabel
+from geest.gui.widgets.datasource_widgets.download_task_controls import DownloadTaskControls
 from geest.utilities import (
     get_ui_class,
     is_qgis_dark_theme_active,
@@ -101,14 +117,25 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         self.aggregation_lineedit.textChanged.connect(self.aggregation_lineedit_text_changed)
         self.load_combo_from_model(self.aggregation_combo, self.aggregation_lineedit, "aggregation")
 
-        # Set up the population raster widgets
+        # Set up the population raster widgets. Accept both raster and vector
+        # layers so the user can freely choose between a raster population grid
+        # and the S2S demographics vector layer downloaded via the S2S button.
         self.population_combo.setAllowEmptyLayer(True)
         self.population_combo.setCurrentIndex(-1)
-        self.population_combo.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
+        self.population_combo.setFilters(
+            QgsMapLayerProxyModel.Filter.RasterLayer | QgsMapLayerProxyModel.Filter.VectorLayer
+        )
         self.population_combo.currentIndexChanged.connect(self.population_selected)
         self.population_toolbutton.clicked.connect(self.population_toolbutton_clicked)
         self.population_lineedit.textChanged.connect(self.population_lineedit_text_changed)
         self.load_combo_from_model(self.population_combo, self.population_lineedit, "population")
+
+        # S2S demographics download state
+        self.s2s_demographics_task = None
+        self._s2s_gate_token = None
+        self._s2s_error_handled = False
+
+        self._setup_s2s_demographics_ui()
 
         # Set up the point layer widgets
         self.point_combo.setAllowEmptyLayer(True)
@@ -200,6 +227,331 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
 
         # Restore the dialog geometry
         self.restore_dialog_geometry()
+
+    def _setup_s2s_demographics_ui(self) -> None:
+        """Configure population UI for Regional projects with S2S demographics.
+
+        For Regional projects the population source is pre-selected to S2S
+        demographics. A download button is shown so the user can fetch the S2S
+        data on demand (and re-download if desired). While no S2S data has been
+        downloaded yet, the raster selection widgets remain available as a
+        fallback. National/Local projects keep the standard raster widgets
+        unchanged.
+        """
+        analysis_scale = self.tree_item.attribute("analysis_scale", "national")
+
+        if analysis_scale != "regional":
+            return
+
+        s2s_field = self.tree_item.attribute("population_s2s_field", "") or DEFAULT_S2S_POPULATION_FIELD
+        s2s_pop_path = self.tree_item.attribute("population_s2s_output_path", None)
+        has_s2s_data = bool(s2s_pop_path) and os.path.exists(s2s_pop_path)
+
+        s2s_label = QLabel(f"S2S Demographics: {s2s_field}")
+        s2s_label.setStyleSheet("font-weight: bold; padding: 4px;")
+
+        self.s2s_demographics_controls = DownloadTaskControls(
+            button_text="Download from S2S",
+            tooltip="Download population demographics data from Space2Stats",
+            click_handler=self.fetch_s2s_demographics,
+        )
+
+        self.s2s_demographics_status_label = QLabel()
+        self.s2s_demographics_status_label.setStyleSheet("color: #666666; font-size: 11px;")
+
+        # Keep the population combo visible so the user can freely choose
+        # between the S2S demographics layer and a raster population grid.
+        self.population_combo.setVisible(True)
+        self.population_toolbutton.setVisible(True)
+        self.population_lineedit.setVisible(False)
+
+        containing_layout = self._find_layout_containing_widget(self.population_combo)
+        if containing_layout is not None:
+            containing_layout.addWidget(s2s_label)
+            containing_layout.addWidget(self.s2s_demographics_controls.container)
+
+        if has_s2s_data:
+            # Load the existing S2S layer and pre-select it in the combo.
+            layer_name = os.path.splitext(os.path.basename(s2s_pop_path))[0]
+            output_layer = self._load_or_reuse_vector_layer(s2s_pop_path, layer_name)
+            if output_layer is not None:
+                self.population_combo.setLayer(output_layer)
+                self.tree_item.setAttribute("population_layer_id", output_layer.id())
+                self.tree_item.setAttribute("population_layer_name", output_layer.name())
+                self.tree_item.setAttribute("population_layer_source", output_layer.source())
+                self.tree_item.setAttribute("population_layer_provider_type", output_layer.providerType())
+                self.tree_item.setAttribute("population_layer_crs", output_layer.crs().authid())
+            self.s2s_demographics_status_label.setText("✓ S2S data available")
+            self.s2s_demographics_status_label.setStyleSheet("color: #2e7d32; font-size: 11px;")
+            self.s2s_demographics_controls.set_downloaded()
+        else:
+            self.s2s_demographics_status_label.setText(
+                "Click download to fetch S2S data (raster may be used as a fallback)"
+            )
+
+        self._insert_status_label_below(containing_layout)
+
+    @staticmethod
+    def _find_layout_containing_widget(widget: QWidget):
+        """Return the immediate child layout that directly contains the widget.
+
+        Args:
+            widget: The child widget to locate.
+
+        Returns:
+            The QLayout that directly contains the widget, or None.
+        """
+        parent = widget.parentWidget()
+        if parent is None or parent.layout() is None:
+            return None
+        for index in range(parent.layout().count()):
+            item = parent.layout().itemAt(index)
+            if item is not None and item.layout() is not None and item.layout().indexOf(widget) != -1:
+                return item.layout()
+        return None
+
+    def _insert_status_label_below(self, containing_layout) -> None:
+        """Insert the status label into the parent grid, below the population row.
+
+        Args:
+            containing_layout: The layout holding the population widgets
+                (horizontalLayout_2), which sits inside gridLayout_2.
+        """
+        parent = self.population_combo.parentWidget()
+        if parent is None or containing_layout is None:
+            return
+        grid = parent.layout()
+        if grid is None:
+            return
+        for index in range(grid.count()):
+            item = grid.itemAt(index)
+            if item is not None and item.layout() is containing_layout:
+                row, col, _, _ = grid.getItemPosition(index)
+                grid.addWidget(self.s2s_demographics_status_label, row + 1, col)
+                break
+
+    def fetch_s2s_demographics(self) -> None:
+        """Download S2S demographics data for the current study area."""
+        working_dir = self.tree_item.attribute("working_folder", "")
+        if not working_dir or not os.path.exists(working_dir):
+            QMessageBox.warning(
+                self,
+                "S2S Download",
+                "Working directory not found. Please set up a project first.",
+            )
+            return
+
+        gpkg_path = os.path.join(working_dir, "study_area", "study_area.gpkg")
+        if not os.path.exists(gpkg_path):
+            QMessageBox.warning(
+                self,
+                "S2S Download",
+                "Study area not found. Please create a study area first.",
+            )
+            return
+
+        aoi_feature = self._build_aoi_feature(gpkg_path)
+        if not aoi_feature:
+            QMessageBox.warning(
+                self,
+                "S2S Download",
+                "Could not determine study area boundary for S2S query.",
+            )
+            return
+
+        token = S2STaskGate.acquire("dialog:analysis_aggregation")
+        if not token:
+            active = S2STaskGate.active_label() or "another panel"
+            QMessageBox.information(
+                self,
+                "S2S Busy",
+                f"Another S2S download is running ({active}). Please wait.",
+            )
+            return
+        self._s2s_gate_token = token
+
+        self.s2s_demographics_controls.set_running()
+        self.s2s_demographics_status_label.setText("Fetching S2S data...")
+        self.s2s_demographics_status_label.setStyleSheet("color: #1976d2; font-size: 11px;")
+        self._s2s_error_handled = False
+
+        s2s_field = self.tree_item.attribute("population_s2s_field", "") or DEFAULT_S2S_POPULATION_FIELD
+        self.s2s_demographics_task = S2SDownloaderTask(
+            aoi=aoi_feature,
+            fields=[s2s_field],
+            working_dir=working_dir,
+            filename="s2s_demographics",
+            spatial_join_method="centroid",
+            geometry="point",
+            delete_existing=True,
+        )
+
+        self.s2s_demographics_task.progress_updated.connect(self._on_s2s_demographics_progress)
+        self.s2s_demographics_task.error_occurred.connect(self._on_s2s_demographics_error)
+        self.s2s_demographics_task.taskCompleted.connect(self._on_s2s_demographics_completed)
+        self.s2s_demographics_task.taskTerminated.connect(self._on_s2s_demographics_terminated)
+
+        QgsApplication.taskManager().addTask(self.s2s_demographics_task)
+
+    def _on_s2s_demographics_progress(self, message: str) -> None:
+        """Update UI with S2S download progress.
+
+        Args:
+            message: Progress message from the S2S download task.
+        """
+        self.s2s_demographics_status_label.setText(message)
+        self.s2s_demographics_controls.update_progress(message)
+
+    def _on_s2s_demographics_error(self, message: str) -> None:
+        """Handle S2S download error.
+
+        Args:
+            message: Error message from the S2S download task.
+        """
+        self._s2s_error_handled = True
+        self._release_s2s_gate()
+        self.s2s_demographics_status_label.setText(f"Download failed: {message}")
+        self.s2s_demographics_status_label.setStyleSheet("color: #d32f2f; font-size: 11px;")
+        self.s2s_demographics_controls.set_download_failed(message)
+        QMessageBox.warning(
+            self,
+            "S2S Download Failed",
+            f"Failed to download S2S demographics data:\n\n{message}\n\n"
+            "You can still use a raster layer for population data.",
+        )
+
+    def _on_s2s_demographics_terminated(self) -> None:
+        """Handle S2S download termination (cancel or failure)."""
+        self._release_s2s_gate()
+        if self._s2s_error_handled:
+            return
+        self.s2s_demographics_status_label.setText("Download cancelled")
+        self.s2s_demographics_status_label.setStyleSheet("color: #f57c00; font-size: 11px;")
+        self.s2s_demographics_controls.set_cancelled()
+
+    def _on_s2s_demographics_completed(self) -> None:
+        """Handle successful S2S download."""
+        self._release_s2s_gate()
+        self.s2s_demographics_controls.reset()
+
+        working_dir = self.tree_item.attribute("working_folder", "")
+        output_path = os.path.join(working_dir, "study_area", "s2s_demographics.gpkg")
+
+        if not os.path.exists(output_path):
+            self.s2s_demographics_status_label.setText("Download completed but file not found")
+            self.s2s_demographics_status_label.setStyleSheet("color: #d32f2f; font-size: 11px;")
+            self.s2s_demographics_controls.set_not_found(output_path)
+            return
+
+        s2s_field = self.tree_item.attribute("population_s2s_field", "") or DEFAULT_S2S_POPULATION_FIELD
+        self.tree_item.setAttribute("population_s2s_output_path", output_path)
+        self.tree_item.setAttribute("population_s2s_field", s2s_field)
+        self.tree_item.setAttribute("population_source", "s2s")
+
+        # Load the downloaded layer and pre-select it in the combo so the user
+        # can freely switch between the S2S demographics and a raster layer.
+        layer_name = os.path.splitext(os.path.basename(output_path))[0]
+        output_layer = self._load_or_reuse_vector_layer(output_path, layer_name)
+        if output_layer is not None:
+            self.population_combo.setLayer(output_layer)
+            self.tree_item.setAttribute("population_layer_id", output_layer.id())
+            self.tree_item.setAttribute("population_layer_name", output_layer.name())
+            self.tree_item.setAttribute("population_layer_source", output_layer.source())
+            self.tree_item.setAttribute("population_layer_provider_type", output_layer.providerType())
+            self.tree_item.setAttribute("population_layer_crs", output_layer.crs().authid())
+
+        self.s2s_demographics_status_label.setText("✓ S2S data downloaded successfully")
+        self.s2s_demographics_status_label.setStyleSheet("color: #2e7d32; font-size: 11px;")
+        self.s2s_demographics_controls.set_downloaded()
+
+        log_message(
+            f"S2S demographics downloaded to {output_path}",
+            tag="GeoE3",
+            level=Qgis.Info,
+        )
+
+    def _release_s2s_gate(self) -> None:
+        """Release the S2S task gate if held by this dialog."""
+        if self._s2s_gate_token:
+            S2STaskGate.release(self._s2s_gate_token)
+            self._s2s_gate_token = None
+
+    @staticmethod
+    def _build_aoi_feature(gpkg_path: str) -> dict:
+        """Build a GeoJSON Feature from study area bounding boxes.
+
+        Args:
+            gpkg_path: Path to the study area GeoPackage.
+
+        Returns:
+            GeoJSON Feature dict with geometry in EPSG:4326, or empty dict on error.
+        """
+        layer = QgsVectorLayer(
+            f"{gpkg_path}|layername=study_area_bboxes",
+            "study_area_bboxes",
+            "ogr",
+        )
+        if not layer.isValid() or layer.featureCount() == 0:
+            return {}
+
+        source_crs = layer.crs()
+        target_crs = QgsCoordinateReferenceSystem("EPSG:4326")
+        transform = None
+        if source_crs.isValid() and source_crs != target_crs:
+            transform = QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
+
+        geometries = []
+        for feature in layer.getFeatures():
+            geometry = feature.geometry()
+            if not geometry or geometry.isEmpty():
+                continue
+            transformed_geometry = QgsGeometry(geometry)
+            if transform is not None:
+                transformed_geometry.transform(transform)
+            geometries.append(transformed_geometry)
+
+        if not geometries:
+            return {}
+
+        union_geometry = QgsGeometry.unaryUnion(geometries)
+        if not union_geometry or union_geometry.isEmpty():
+            return {}
+
+        return {
+            "type": "Feature",
+            "geometry": json.loads(union_geometry.asJson()),
+            "properties": {},
+        }
+
+    @staticmethod
+    def _load_or_reuse_vector_layer(layer_path: str, layer_name: str):
+        """Load a vector layer once, reusing an existing project layer when possible.
+
+        Args:
+            layer_path: Path (or URI) to the GPKG/vector file.
+            layer_name: Layer name to use.
+
+        Returns:
+            The loaded QgsVectorLayer, or None if invalid.
+        """
+        target_path = os.path.normpath(os.path.abspath(layer_path))
+        for existing_layer in QgsProject.instance().mapLayers().values():
+            if not isinstance(existing_layer, QgsVectorLayer):
+                continue
+            source = existing_layer.source() or ""
+            source_path = os.path.normpath(os.path.abspath(source.split("|")[0]))
+            if source_path != target_path:
+                continue
+            return existing_layer
+
+        output_layer = QgsVectorLayer(f"{layer_path}|layername={layer_name}", layer_name, "ogr")
+        if not output_layer.isValid():
+            output_layer = QgsVectorLayer(layer_path, layer_name, "ogr")
+        if not output_layer.isValid():
+            return None
+
+        QgsProject.instance().addMapLayer(output_layer)
+        return output_layer
 
     def restore_dialog_geometry(self):
         """
@@ -599,6 +951,10 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         self.saveWeightingsToModel()  # Assign weightings when changes are accepted
         self.save_combo_to_model(self.aggregation_combo, self.aggregation_lineedit, "aggregation")
         self.save_combo_to_model(self.population_combo, self.population_lineedit, "population")
+        # Determine the population source from the layer actually selected in
+        # the combo: if it is the S2S demographics layer, use the S2S vector
+        # pipeline; otherwise (raster selected) use the raster pipeline.
+        self._save_population_source_from_combo()
         self.save_combo_to_model(self.point_combo, self.point_lineedit, "point_mask")
         self.save_combo_to_model(self.polygon_combo, self.polygon_lineedit, "polygon_mask")
         self.save_combo_to_model(self.raster_combo, self.raster_lineedit, "raster_mask")
@@ -618,6 +974,54 @@ class AnalysisAggregationDialog(FORM_CLASS, CustomBaseDialog):
         # Save the dialog geometry
         self.save_geometry()
         self.accept()
+
+    def _save_population_source_from_combo(self) -> None:
+        """Store population_source based on the layer selected in the combo.
+
+        If the selected layer source matches the downloaded S2S demographics
+        GeoPackage, the S2S vector pipeline is used; otherwise the raster
+        pipeline is used.
+        """
+        s2s_pop_path = self.tree_item.attribute("population_s2s_output_path", None)
+        layer = self.population_combo.currentLayer()
+
+        if layer is None:
+            self.tree_item.setAttribute("population_source", "raster")
+            return
+
+        source_path = self._layer_source_path(layer)
+        s2s_path = self._layer_source_path_from_string(s2s_pop_path)
+        if s2s_pop_path and source_path == s2s_path:
+            self.tree_item.setAttribute("population_source", "s2s")
+        else:
+            self.tree_item.setAttribute("population_source", "raster")
+
+    @staticmethod
+    def _layer_source_path(layer) -> str:
+        """Return the normalized file path portion of a layer source URI.
+
+        Args:
+            layer: A QgsVectorLayer.
+
+        Returns:
+            Absolute normalized path of the source file (without sublayer URI).
+        """
+        return AnalysisAggregationDialog._layer_source_path_from_string(str(layer.source()))
+
+    @staticmethod
+    def _layer_source_path_from_string(source: str) -> str:
+        """Return the normalized file path portion of a layer source string.
+
+        Strips the ``|layername=...`` sublayer suffix so a GPKG URI and its bare
+        file path compare equal.
+
+        Args:
+            source: A layer source URI/path string.
+
+        Returns:
+            Absolute normalized path of the source file.
+        """
+        return os.path.normpath(os.path.abspath(str(source or "").split("|")[0]))
 
     def save_use_state_to_model(self) -> None:
         """Persist the Use checkbox state to dimension analysis_weighting values."""
