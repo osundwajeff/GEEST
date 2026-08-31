@@ -10,8 +10,8 @@ from urllib.parse import quote, unquote
 from qgis.core import Qgis, QgsMapLayerProxyModel, QgsProject
 from qgis.gui import QgsMapLayerComboBox
 from qgis.PyQt.QtCore import QSettings, Qt
-from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QFileDialog, QLineEdit, QStyle, QToolButton
+from qgis.PyQt.QtGui import QFontMetrics, QIcon
+from qgis.PyQt.QtWidgets import QFileDialog, QLabel, QLineEdit, QSizePolicy, QStyle, QToolButton
 
 from geest.utilities import log_message, resources_path
 
@@ -114,6 +114,46 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         self.layout.addWidget(self.raster_button)
         self.raster_button.setToolTip("Raster chosen from file system will have preference")
 
+    def _add_source_link(self, url: str, label: str) -> None:
+        """Add a clickable hyperlink that opens the source dataset in a browser.
+
+        The link is laid out with horizontal size policy ``Ignored`` and no
+        stretched natural width, so it only ever consumes trailing spare space
+        and never changes the width of the other widgets or the table rows.
+
+        Args:
+            url: The URL to open when the link is clicked.
+            label: The link text shown to the user.
+        """
+        if not url:
+            return
+        self._source_link_url = url
+        self._source_link_text = label
+        self._source_link_label = QLabel(f'<a href="{url}">{label}</a>')
+        self._source_link_label.setOpenExternalLinks(True)
+        self._source_link_label.setWordWrap(False)
+        self._source_link_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._source_link_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self._source_link_label.setStyleSheet("color: #2d5a75; font-size: 11px; padding: 0px;")
+        self._source_link_label.setToolTip(
+            f"Download {label} from the World Bank Data Catalog"
+            if label
+            else "Download source data from the World Bank Data Catalog"
+        )
+        self.layout.addWidget(self._source_link_label, stretch=1)
+
+    def _elide_source_link(self) -> None:
+        """Render the source link text ellipsized to fit the available width."""
+        if not getattr(self, "_source_link_label", None):
+            return
+        width = max(20, self._source_link_label.width() - 4)
+        elided = QFontMetrics(self._source_link_label.font()).elidedText(
+            self._source_link_text,
+            Qt.TextElideMode.ElideRight,
+            width,
+        )
+        self._source_link_label.setText(f'<a href="{self._source_link_url}">{elided}</a>')
+
     def resizeEvent(self, event):
         """
         Handle resize events for the parent container.
@@ -123,6 +163,7 @@ class RasterDataSourceWidget(BaseDataSourceWidget):
         """
         super().resizeEvent(event)
         self.resize_clear_button()
+        self._elide_source_link()
 
     def resize_clear_button(self):
         """Reposition the clear button when the line edit is resized."""
