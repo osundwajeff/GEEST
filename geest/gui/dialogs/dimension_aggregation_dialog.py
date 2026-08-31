@@ -82,6 +82,7 @@ class DimensionAggregationDialog(CustomBaseDialog):
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         scroll_widget = QWidget()
         layout = QVBoxLayout(scroll_widget)
         layout.setContentsMargins(20, 20, 20, 20)

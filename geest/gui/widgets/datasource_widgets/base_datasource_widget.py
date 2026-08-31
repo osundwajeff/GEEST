@@ -44,7 +44,7 @@ class BaseDataSourceWidget(QWidget):
         self.widget_key = widget_key
         self.attributes = attributes
         self.layout: QHBoxLayout = QHBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(4, 0, 4, 0)
         # Log creation of widget
         log_message(f"Creating DataSource Configuration Widget {widget_key}")
 

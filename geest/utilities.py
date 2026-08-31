@@ -42,6 +42,62 @@ from qgis.PyQt.QtWidgets import QApplication
 
 from geest.core.settings import setting
 
+# Small joining words that stay lowercase in a title unless they are the
+# first or last word.
+_TITLE_CASE_STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "but",
+    "by",
+    "for",
+    "if",
+    "in",
+    "nor",
+    "of",
+    "on",
+    "or",
+    "so",
+    "the",
+    "to",
+    "up",
+    "with",
+    "yet",
+    "vs",
+}
+
+
+def title_case(text: str) -> str:
+    """Convert text to Title Case for display.
+
+    Every word is capitalised except small joining words, which stay
+    lowercase unless they are the first or last word. Tokens that are
+    already all-caps (e.g. ``WBL``, ``ACLED``) and tokens containing digits
+    are preserved as-is, so acronyms are not mangled the way ``str.title()``
+    would. Apostrophes are handled correctly (``Women's``, not ``Women'S``).
+
+    Args:
+        text: The string to convert.
+
+    Returns:
+        The string converted to title case.
+    """
+    words = re.split(r"([^A-Za-z0-9']+)", text)
+    word_indices = [i for i, part in enumerate(words) if part and part[0].isalnum()]
+    total_words = len(word_indices)
+    for position, index in enumerate(word_indices):
+        part = words[index]
+        if part.isupper() or not part.isalpha():
+            # Preserve acronyms (e.g. WBL, ACLED) and tokens with digits.
+            continue
+        lower = part.lower()
+        if lower in _TITLE_CASE_STOP_WORDS and 0 < position < total_words - 1:
+            continue
+        words[index] = lower[:1].upper() + lower[1:]
+    return "".join(words)
+
 
 def theme_background_image() -> QPixmap:
     """🔄 Theme background image.
