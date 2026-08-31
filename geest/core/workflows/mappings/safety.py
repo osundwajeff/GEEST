@@ -36,7 +36,9 @@ STREETLIGHTS_SAFETY = {
 }
 
 # Nighttime Lights Safety (VIIRS annual composites)
-# Uses Jenks Natural Breaks algorithm for optimal data-driven classification
+# Two classification methods are supported:
+#   - Jenks Natural Breaks: dynamic data-driven classification (6 classes)
+#   - NOAA thresholds: fixed Black Marble (NOAA) value ranges (5 classes)
 NIGHTTIME_LIGHTS_SAFETY = {
     "data_source": "VIIRS annual composites",
     "scoring_method": "jenks_natural_breaks",
@@ -51,6 +53,8 @@ NIGHTTIME_LIGHTS_SAFETY = {
     "example_note": ("Example values shown are for a typical urban area with VIIRS nighttime lights data."),
     "note": (
         "Actual break points are computed dynamically using Jenks Natural Breaks algorithm "
-        "for optimal classification based on your study area's data distribution."
+        "for optimal classification based on your study area's data distribution. "
+        "Alternatively, the NOAA threshold method applies the fixed Black Marble value ranges: "
+        "1 (0-0.5), 2 (0.5-1), 3 (1-5), 4 (5-50), 5 (>50)."
     ),
 }
